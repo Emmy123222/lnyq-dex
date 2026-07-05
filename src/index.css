@@ -1,0 +1,231 @@
+@import url("https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap");
+@import "tailwindcss";
+
+@theme {
+  /* ── Fonts ── */
+  --font-sans: 'Lato', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ── Purple scale ── */
+  --color-purple-50:  #F4E9FF;
+  --color-purple-100: #E7D2FF;
+  --color-purple-200: #C48AFD;
+  --color-purple-300: #B36FFC;
+  --color-purple-400: #A051FC;
+  --color-purple-500: #8B33EE;
+  --color-purple-600: #7126CE;
+  --color-purple-700: #531C97;
+  --color-purple-800: #35184E;
+  --color-purple-900: #20112F;
+  --color-purple-950: #150B1F;
+
+  /* ── Ink / neutral ramp ── */
+  --color-ink-950: #060608;
+  --color-ink-900: #0A0A0C;
+  --color-ink-850: #0F0F12;
+  --color-ink-800: #141418;
+  --color-ink-700: #1B1B21;
+  --color-ink-600: #26262E;
+  --color-ink-500: #34343E;
+  --color-ink-400: #4A4A56;
+  --color-ink-300: #6B6B78;
+  --color-ink-200: #9A9AA6;
+  --color-ink-100: #C9C9D2;
+
+  /* ── Trading semantics ── */
+  --color-up-500: #2EBD85;
+  --color-up-400: #34D39A;
+  --color-down-500: #F6465D;
+  --color-down-400: #FF6A7D;
+  --color-warn-500: #F0B90B;
+
+  /* ── Spacing (4px grid) ── */
+  --spacing-0: 0;
+  --spacing-px: 1px;
+  --spacing-0-5: 2px;
+  --spacing-1: 4px;
+  --spacing-1-5: 6px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-28: 112px;
+
+  /* ── Radii ── */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
+  --radius-pill: 999px;
+
+  /* ── Type scale ── */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --text-3xl: 34px;
+
+  /* ── Font weights ── */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-bold: 700;
+  --font-weight-black: 900;
+
+  /* ── Shadows ── */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.6);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.55);
+  --shadow-lg: 0 16px 48px rgba(0,0,0,0.6);
+  --shadow-pop: 0 12px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06);
+  --shadow-accent: 0 0 0 1px rgba(160,81,252,0.4), 0 8px 30px rgba(160,81,252,0.22);
+
+  /* ── Motion ── */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 90ms;
+  --duration-base: 150ms;
+  --duration-slow: 260ms;
+}
+
+/* ── Semantic CSS vars ── */
+:root {
+  --bg-base:        #000000;
+  --surface-1:      #0A0A0C;
+  --surface-2:      #0F0F12;
+  --surface-3:      #141418;
+  --surface-raised: #1B1B21;
+  --surface-sunken: #060608;
+
+  --border-subtle:  rgba(255,255,255,0.06);
+  --border:         rgba(255,255,255,0.10);
+  --border-strong:  rgba(255,255,255,0.16);
+  --border-accent:  #A051FC;
+
+  --text-primary:   #FFFFFF;
+  --text-secondary: #9A9AA6;
+  --text-tertiary:  #6B6B78;
+  --text-disabled:  #4A4A56;
+  --text-accent:    #B36FFC;
+
+  --accent:         #A051FC;
+  --accent-hover:   #B36FFC;
+  --accent-active:  #8B33EE;
+  --accent-muted:   #35184E;
+  --accent-tint:    rgba(160,81,252,0.14);
+  --accent-tint-strong: rgba(160,81,252,0.26);
+  --accent-glow:    rgba(160,81,252,0.45);
+
+  --buy:            #2EBD85;
+  --buy-hover:      #34D39A;
+  --buy-bg:         rgba(46,189,133,0.14);
+  --buy-bg-strong:  rgba(46,189,133,0.28);
+  --sell:           #F6465D;
+  --sell-hover:     #FF6A7D;
+  --sell-bg:        rgba(246,70,93,0.14);
+  --sell-bg-strong: rgba(246,70,93,0.28);
+  --warn:           #F0B90B;
+  --warn-bg:        rgba(240,185,11,0.14);
+
+  --focus-ring:     rgba(160,81,252,0.45);
+  --topbar-h:       56px;
+
+  /* ── Semantic aliases used in design tokens ── */
+  --up-500:         #2EBD85;
+  --up-400:         #34D39A;
+  --up-tint:        rgba(46,189,133,0.14);
+  --down-500:       #F6465D;
+  --down-400:       #FF6A7D;
+  --down-tint:      rgba(246,70,93,0.14);
+  --surface-modal:  rgba(0,0,0,0.72);
+}
+
+/* ── Base ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Tabular numerals for numeric data */
+.nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.mono { font-family: var(--font-mono); }
+
+/* Thin dark scrollbars */
+* { scrollbar-width: thin; scrollbar-color: #26262E transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: #26262E;
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: #34343E; }
+
+::selection { background: rgba(160,81,252,0.26); color: #fff; }
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #000, 0 0 0 4px rgba(160,81,252,0.45);
+}
+
+/* ── Toast animations ── */
+@keyframes slideIn {
+  from { transform: translateX(120%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateX(120%); }
+}
+.toast-enter { animation: slideIn 200ms cubic-bezier(0.22,1,0.36,1) forwards; }
+.toast-exit  { animation: fadeOut 200ms cubic-bezier(0.65,0,0.35,1) forwards; }
+
+/* ── Chart bar placeholder animation ── */
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, #141418 25%, #1B1B21 50%, #141418 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ── Price flash ── */
+@keyframes flashUp   { 0%,100% { color: inherit; } 50% { color: var(--buy); } }
+@keyframes flashDown { 0%,100% { color: inherit; } 50% { color: var(--sell); } }
+.flash-up   { animation: flashUp   1s ease; }
+.flash-down { animation: flashDown 1s ease; }
+
+/* ── Modal scale-in ── */
+@keyframes modalIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+.modal-in { animation: modalIn 300ms cubic-bezier(0.22,1,0.36,1) forwards; }
+
+/* ── Button press ── */
+.btn-press:active { transform: scale(0.98); }
