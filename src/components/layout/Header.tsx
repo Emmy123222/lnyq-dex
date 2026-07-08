@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import DepositModal from '../ui/DepositModal'
+import NetworkStatus from '../ui/NetworkStatus'
+import EnvBadge from '../ui/EnvBadge'
 
 const NAV_PRIMARY = [
   { label: 'Trade',     path: '/trade' },
@@ -12,6 +14,7 @@ const NAV_PRIMARY = [
 ]
 
 const NAV_MORE = [
+  { label: 'Launchpad',   path: '/launchpad' },
   { label: 'Stake LNYQ',  path: '/stake' },
   { label: 'Analytics',   path: '/analytics' },
   { label: 'Alerts',      path: '/alerts' },
@@ -128,6 +131,16 @@ export default function Header() {
 
         {/* Right: balance + actions */}
         <div className="flex items-center gap-3">
+          {/* Environment indicator */}
+          <div className="hidden lg:block">
+            <EnvBadge />
+          </div>
+
+          {/* Network status pill */}
+          <div className="hidden lg:block">
+            <NetworkStatus />
+          </div>
+
           {/* Available balance */}
           <div className="hidden lg:flex flex-col items-end gap-0 mr-[2px]">
             <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Available</span>

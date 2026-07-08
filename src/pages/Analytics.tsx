@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import { CANDLES } from '../data/mock'
 
 const PERIODS = ['7D', '30D', '90D', 'All']
 
@@ -37,13 +36,14 @@ function PnlChart() {
     ctx.scale(devicePixelRatio, devicePixelRatio)
     ctx.clearRect(0, 0, width, height)
 
-    // Generate cumulative PnL from candle data (mock equity curve)
+    // Synthetic cumulative PnL curve (visual only)
     const points: number[] = []
     let cum = 0
-    CANDLES.slice(-60).forEach(c => {
-      cum += (c.close - c.open) * 0.8
+    for (let i = 0; i < 60; i++) {
+      const drift = (Math.random() - 0.44) * 120
+      cum += drift
       points.push(cum)
-    })
+    }
     const minV = Math.min(...points)
     const maxV = Math.max(...points)
     const range = maxV - minV || 1

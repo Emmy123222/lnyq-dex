@@ -1,0 +1,332 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  LIMIT
+  MARKET
+}
+
+enum TimeInForce {
+  GTC
+  IOC
+  FOK
+  GTD
+}
+
+enum OrderStatus {
+  PENDING
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+  EXPIRED
+  REJECTED
+}
+
+enum LiquidityRole {
+  MAKER
+  TAKER
+}
+
+enum MarketStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum AccessCodeStatus {
+  UNUSED
+  USED
+  REVOKED
+}
+
+enum TransactionType {
+  DRIP
+  DEPOSIT
+  WITHDRAWAL
+  ORDER_PLACED
+  ORDER_CANCELLED
+  TRADE_FILL
+  FEE
+  REFERRAL_REWARD
+  SQUID_ROUTE
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  CANCELLED
+}
+
+// ── Models ────────────────────────────────────────────────────────────────────
+
+model User {
+  id               String   @id @default(uuid())
+  username         String   @unique
+  email            String   @unique
+  passwordHash     String?
+  walletAddress    String?  @unique
+  referralCode     String   @unique
+  referredByUserId String?
+  referralPoints   Int      @default(0)
+  dripClaimed      Boolean  @default(false)
+  sessionToken     String?  @unique
+  isAdmin          Boolean  @default(false)
+  isMarketMaker    Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  referredBy       User?        @relation("UserReferrals", fields: [referredByUserId], references: [id])
+  referrals        User[]       @relation("UserReferrals")
+  orders           Order[]
+  fills            Fill[]
+  balances         Balance[]
+  transactions     Transaction[]
+  squidRoutes      SquidRoute[]
+  accessCodesUsed  AccessCode[]
+  referralsMade    Referral[]   @relation("ReferrerRelation")
+  referredFrom     Referral[]   @relation("ReferredRelation")
+
+  @@index([email])
+  @@index([sessionToken])
+  @@index([referralCode])
+  @@index([isMarketMaker])
+}
+
+model AccessCode {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  status       AccessCodeStatus @default(UNUSED)
+  usedByUserId String?
+  usedAt       DateTime?
+  createdAt    DateTime         @default(now())
+
+  usedBy       User?            @relation(fields: [usedByUserId], references: [id])
+
+  @@index([code])
+  @@index([status])
+}
+
+model Referral {
+  id             String   @id @default(uuid())
+  referrerUserId String
+  referredUserId String   @unique
+  referralCode   String
+  pointsAwarded  Int      @default(50)
+  createdAt      DateTime @default(now())
+
+  referrer       User     @relation("ReferrerRelation", fields: [referrerUserId], references: [id])
+  referred       User     @relation("ReferredRelation", fields: [referredUserId], references: [id])
+
+  @@index([referrerUserId])
+}
+
+model Collection {
+  id              String   @id @default(uuid())
+  name            String
+  symbol          String   @unique
+  supply          Int
+  chain           String   @default("solana")
+  whitelistStatus String   @default("APPROVED")
+  metadataUrl     String?
+  createdAt       DateTime @default(now())
+
+  markets         Market[]
+}
+
+model Market {
+  id             String       @id
+  symbol         String       @unique
+  baseAsset      String
+  quoteAsset     String
+  collectionId   String?
+  type           String       @default("spot")
+  status         MarketStatus @default(ACTIVE)
+  displayName    String
+  tickSize       Decimal      @db.Decimal(20, 8)
+  minOrderSize   Int          @default(1)
+  makerFeeBps    Int          @default(5)
+  takerFeeBps    Int          @default(25)
+  referencePrice Decimal      @db.Decimal(20, 8) @default(0)
+  maxLeverage    Int?
+  isPhase1       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  collection     Collection?  @relation(fields: [collectionId], references: [id])
+  orders         Order[]
+  fills          Fill[]
+  trades         Trade[]
+  candles        Candle[]
+
+  @@index([status])
+  @@index([type])
+}
+
+model Balance {
+  id        String   @id @default(uuid())
+  userId    String
+  asset     String
+  available Decimal  @db.Decimal(20, 8) @default(0)
+  locked    Decimal  @db.Decimal(20, 8) @default(0)
+  pending   Decimal  @db.Decimal(20, 8) @default(0)
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, asset])
+  @@index([userId])
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String
+  marketId          String
+  side              OrderSide
+  type              OrderType
+  timeInForce       TimeInForce @default(GTC)
+  price             Decimal     @db.Decimal(20, 8)
+  quantity          Int
+  remainingQuantity Int
+  filledQuantity    Int         @default(0)
+  status            OrderStatus @default(PENDING)
+  expiresAt         DateTime?
+  clientOrderId     String?
+  isMarketMaker     Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user              User        @relation(fields: [userId], references: [id])
+  market            Market      @relation(fields: [marketId], references: [id])
+  fills             Fill[]
+
+  @@index([marketId, side, status, price])
+  @@index([userId, status])
+  @@index([marketId, status, createdAt])
+  @@index([isMarketMaker])
+}
+
+model Fill {
+  id             String        @id @default(uuid())
+  tradeId        String
+  orderId        String
+  counterOrderId String
+  userId         String
+  marketId       String
+  side           OrderSide
+  price          Decimal       @db.Decimal(20, 8)
+  quantity       Int
+  fee            Decimal       @db.Decimal(20, 8)
+  feeAsset       String
+  liquidityRole  LiquidityRole
+  createdAt      DateTime      @default(now())
+
+  trade          Trade         @relation(fields: [tradeId], references: [id])
+  order          Order         @relation(fields: [orderId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+  market         Market        @relation(fields: [marketId], references: [id])
+
+  @@index([tradeId])
+  @@index([orderId])
+  @@index([userId, createdAt])
+  @@index([marketId, createdAt])
+}
+
+model Trade {
+  id               String    @id @default(uuid())
+  marketId         String
+  price            Decimal   @db.Decimal(20, 8)
+  quantity         Int
+  aggressorSide    OrderSide
+  makerOrderId     String
+  takerOrderId     String
+  settlementStatus String    @default("MATCHED_PENDING_SETTLEMENT")
+  createdAt        DateTime  @default(now())
+
+  market           Market    @relation(fields: [marketId], references: [id])
+  fills            Fill[]
+
+  @@index([marketId, createdAt])
+}
+
+model Candle {
+  id         String   @id @default(uuid())
+  marketId   String
+  interval   String
+  openTime   DateTime
+  closeTime  DateTime
+  open       Decimal  @db.Decimal(20, 8)
+  high       Decimal  @db.Decimal(20, 8)
+  low        Decimal  @db.Decimal(20, 8)
+  close      Decimal  @db.Decimal(20, 8)
+  volume     Decimal  @db.Decimal(20, 8) @default(0)
+  tradeCount Int      @default(0)
+  updatedAt  DateTime @updatedAt
+
+  market     Market   @relation(fields: [marketId], references: [id])
+
+  @@unique([marketId, interval, openTime])
+  @@index([marketId, interval, openTime])
+}
+
+model Transaction {
+  id        String            @id @default(uuid())
+  userId    String
+  type      TransactionType
+  status    TransactionStatus @default(PENDING)
+  asset     String
+  amount    Decimal           @db.Decimal(20, 8)
+  metadata  Json?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  user      User              @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([type, status])
+}
+
+model SquidRoute {
+  id               String    @id @default(uuid())
+  userId           String
+  quoteId          String?
+  routeType        String?
+  sourceChain      String
+  destinationChain String
+  sourceToken      String
+  destinationToken String
+  amount           Decimal   @db.Decimal(20, 8)
+  status           String    @default("PENDING")
+  feeCosts         Json?
+  depositAddress   String?
+  trackingId       String?
+  expiresAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([trackingId])
+}
+
+model FeatureFlag {
+  key       String   @id
+  enabled   Boolean  @default(false)
+  metadata  Json?
+  updatedAt DateTime @updatedAt
+}

@@ -1,11 +1,41 @@
-import { useState, useRef, useEffect } from 'react'
-import { CANDLES } from '../../data/mock'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import {
+  createChart,
+  CandlestickSeries,
+  HistogramSeries,
+  CrosshairMode,
+  type IChartApi,
+  type ISeriesApi,
+  type CandlestickData,
+  type HistogramData,
+  type Time,
+} from 'lightweight-charts'
+import { chartService } from '../../services/chartService'
+import type { Candle } from '../../types'
+import type { CandleInterval } from '../../services/chartService'
 import type { Pair } from '../../types'
 
-type TF = '1m' | '5m' | '15m' | '1h' | '4h' | '1D'
-const TIMEFRAMES: TF[] = ['1m', '5m', '15m', '1h', '4h', '1D']
+const TIMEFRAMES: CandleInterval[] = ['1m', '5m', '15m', '1h', '4h', '1D']
 
-function formatPrice(n: number) {
+function candleToBar(c: Candle): CandlestickData<Time> {
+  return {
+    time:  Math.floor(c.time / 1000) as Time,
+    open:  c.open,
+    high:  c.high,
+    low:   c.low,
+    close: c.close,
+  }
+}
+
+function candleToVol(c: Candle): HistogramData<Time> {
+  return {
+    time:  Math.floor(c.time / 1000) as Time,
+    value: c.volume,
+    color: c.close >= c.open ? 'rgba(46,189,133,0.28)' : 'rgba(246,70,93,0.22)',
+  }
+}
+
+function fmt2(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
@@ -14,110 +44,185 @@ interface PriceChartProps {
 }
 
 export default function PriceChart({ pair }: PriceChartProps) {
-  const [tf, setTf] = useState<TF>('1h')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [tf, setTf]              = useState<CandleInterval>('1h')
+  const [loading, setLoading]    = useState(true)
+  const [error, setError]        = useState<string | null>(null)
+  const [lastCandle, setLastCandle] = useState<Candle | null>(null)
+
   const containerRef = useRef<HTMLDivElement>(null)
+  const chartRef     = useRef<IChartApi | null>(null)
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const volSeriesRef    = useRef<ISeriesApi<'Histogram'> | null>(null)
 
-  const last = CANDLES[CANDLES.length - 1]
-  const first = CANDLES[0]
-  const change = last.close - first.open
-  const changePct = (change / first.open) * 100
+  const marketId = `${pair.base}-${pair.quote}-SPOT`
 
+  // Create chart once
   useEffect(() => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
-    const { width, height } = container.getBoundingClientRect()
-    if (width === 0 || height === 0) return
-    canvas.width = width * window.devicePixelRatio
-    canvas.height = height * window.devicePixelRatio
-    canvas.style.width = `${width}px`
-    canvas.style.height = `${height}px`
+    if (!containerRef.current) return
 
-    const ctx = canvas.getContext('2d')!
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
-    ctx.clearRect(0, 0, width, height)
-
-    const candles = CANDLES.slice(-Math.min(80, CANDLES.length))
-    const prices = candles.flatMap(c => [c.high, c.low])
-    const minP = Math.min(...prices) * 0.998
-    const maxP = Math.max(...prices) * 1.002
-    const range = maxP - minP
-
-    const pad = { top: 8, bottom: 24, left: 4, right: 52 }
-    const chartW = width - pad.left - pad.right
-    const chartH = height - pad.top - pad.bottom
-    const candleW = Math.max(2, (chartW / candles.length) - 1.5)
-
-    const toY = (p: number) => pad.top + ((maxP - p) / range) * chartH
-    const toX = (i: number) => pad.left + i * (chartW / candles.length) + (chartW / candles.length) / 2
-
-    // Grid lines
-    ctx.setLineDash([2, 4])
-    for (let i = 0; i <= 5; i++) {
-      const p = minP + (range / 5) * i
-      const y = toY(p)
-      ctx.strokeStyle = 'rgba(255,255,255,0.04)'
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(pad.left, y)
-      ctx.lineTo(width - pad.right, y)
-      ctx.stroke()
-      ctx.fillStyle = '#6B6B78'
-      ctx.font = '10px IBM Plex Mono, monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText(formatPrice(p), width - 2, y + 3)
-    }
-    ctx.setLineDash([])
-
-    // Candles
-    candles.forEach((c, i) => {
-      const x = toX(i)
-      const isUp = c.close >= c.open
-      const color = isUp ? '#2EBD85' : '#F6465D'
-      const bodyTop = toY(Math.max(c.open, c.close))
-      const bodyBot = toY(Math.min(c.open, c.close))
-      const bodyH = Math.max(1, bodyBot - bodyTop)
-
-      ctx.strokeStyle = color
-      ctx.lineWidth = 1
-      ctx.beginPath()
-      ctx.moveTo(x, toY(c.high))
-      ctx.lineTo(x, toY(c.low))
-      ctx.stroke()
-
-      ctx.fillStyle = isUp ? color : color
-      ctx.fillRect(x - candleW / 2, bodyTop, candleW, bodyH)
+    const chart = createChart(containerRef.current, {
+      layout: {
+        background:  { color: 'transparent' },
+        textColor:   '#9B9BAA',
+        fontFamily:  '"IBM Plex Mono", monospace',
+        fontSize:    11,
+      },
+      grid: {
+        vertLines: { color: 'rgba(255,255,255,0.04)' },
+        horzLines: { color: 'rgba(255,255,255,0.04)' },
+      },
+      crosshair: {
+        mode: CrosshairMode.Normal,
+        vertLine: { color: 'rgba(160,81,252,0.5)', labelBackgroundColor: '#1A1A2E' },
+        horzLine: { color: 'rgba(160,81,252,0.5)', labelBackgroundColor: '#1A1A2E' },
+      },
+      rightPriceScale: {
+        borderColor: 'rgba(255,255,255,0.08)',
+        textColor:   '#6B6B78',
+      },
+      timeScale: {
+        borderColor:    'rgba(255,255,255,0.08)',
+        timeVisible:    true,
+        secondsVisible: false,
+        rightOffset:    6,
+        barSpacing:     8,
+        minBarSpacing:  3,
+      },
+      handleScroll:  true,
+      handleScale:   true,
     })
-  }, [tf, pair])
+
+    const candleSeries = chart.addSeries(CandlestickSeries, {
+      upColor:          '#2EBD85',
+      downColor:        '#F6465D',
+      borderUpColor:    '#2EBD85',
+      borderDownColor:  '#F6465D',
+      wickUpColor:      '#2EBD85',
+      wickDownColor:    '#F6465D',
+      priceLineVisible: true,
+      priceLineColor:   'rgba(160,81,252,0.7)',
+      lastValueVisible: true,
+    })
+
+    // Volume pane — 18% height, no price scale overlap
+    const volSeries = chart.addSeries(HistogramSeries, {
+      priceFormat:      { type: 'volume' },
+      priceScaleId:     'vol',
+      lastValueVisible: false,
+      priceLineVisible: false,
+    })
+    chart.priceScale('vol').applyOptions({
+      scaleMargins: { top: 0.82, bottom: 0 },
+      visible: false,
+    })
+    chart.priceScale('right').applyOptions({
+      scaleMargins: { top: 0.02, bottom: 0.20 },
+    })
+
+    chartRef.current      = chart
+    candleSeriesRef.current = candleSeries
+    volSeriesRef.current    = volSeries
+
+    const obs = new ResizeObserver(() => {
+      if (containerRef.current) {
+        chart.resize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+      }
+    })
+    obs.observe(containerRef.current)
+
+    return () => {
+      obs.disconnect()
+      chart.remove()
+      chartRef.current        = null
+      candleSeriesRef.current = null
+      volSeriesRef.current    = null
+    }
+  }, [])
+
+  // Load candles on market/interval change
+  const loadCandles = useCallback(async () => {
+    if (!candleSeriesRef.current || !volSeriesRef.current) return
+    setLoading(true)
+    setError(null)
+
+    const res = await chartService.getCandles(marketId, tf, 300)
+    if (!res.ok) {
+      setError(res.error.code === 'INTEGRATION_UNAVAILABLE'
+        ? 'Backend not configured.'
+        : res.error.message)
+      setLoading(false)
+      return
+    }
+
+    const candles = res.data
+    if (candles.length === 0) {
+      setLoading(false)
+      return
+    }
+
+    candleSeriesRef.current.setData(candles.map(candleToBar))
+    volSeriesRef.current.setData(candles.map(candleToVol))
+    setLastCandle(candles[candles.length - 1])
+    chartRef.current?.timeScale().fitContent()
+    setLoading(false)
+  }, [marketId, tf])
+
+  useEffect(() => { loadCandles() }, [loadCandles])
+
+  // Subscribe to live updates
+  useEffect(() => {
+    return chartService.subscribe(marketId, tf, (incoming: Candle) => {
+      const bar = candleToBar(incoming)
+      const vol = candleToVol(incoming)
+      candleSeriesRef.current?.update(bar)
+      volSeriesRef.current?.update(vol)
+      setLastCandle(incoming)
+    })
+  }, [marketId, tf])
+
+  // Compute header stats from the last loaded candle vs first
+  const changePct = lastCandle ? ((lastCandle.close - lastCandle.open) / lastCandle.open) * 100 : 0
+  const isUp = changePct >= 0
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar — matches design: price info left, timeframes right as pills */}
-      <div
-        style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', borderBottom: '1px solid var(--border-subtle)' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-          <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-            {formatPrice(last.close)}
-          </span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: changePct >= 0 ? 'var(--up-500)' : 'var(--down-500)' }}>
-            {changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%
-          </span>
-          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC per NFT</span>
+      {/* Toolbar */}
+      <div style={{
+        height: 46, flexShrink: 0, display: 'flex', alignItems: 'center',
+        justifyContent: 'space-between', padding: '0 14px',
+        borderBottom: '1px solid var(--border-subtle)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          {lastCandle ? (
+            <>
+              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {fmt2(lastCandle.close)}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: isUp ? 'var(--up-500)' : 'var(--down-500)' }}>
+                {isUp ? '+' : ''}{changePct.toFixed(2)}%
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC</span>
+            </>
+          ) : (
+            <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>—</span>
+          )}
         </div>
 
         {/* Timeframe pills */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 3 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 2,
+          background: 'var(--surface-2)', border: '1px solid var(--border-subtle)',
+          borderRadius: 6, padding: 3,
+        }}>
           {TIMEFRAMES.map(t => (
             <button
               key={t}
               onClick={() => setTf(t)}
               style={{
-                padding: '4px 9px', borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: 700,
+                cursor: 'pointer', border: 'none', transition: 'all 100ms',
                 background: tf === t ? 'var(--accent)' : 'transparent',
                 color: tf === t ? '#fff' : 'var(--text-tertiary)',
-                border: 'none', transition: 'all 100ms',
               }}
             >
               {t}
@@ -126,10 +231,41 @@ export default function PriceChart({ pair }: PriceChartProps) {
         </div>
       </div>
 
-      {/* Canvas area */}
-      <div ref={containerRef} style={{ flex: 1, position: 'relative', minHeight: 0, padding: '8px 4px 4px' }}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
+      {/* Chart container */}
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+        {loading && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            background: 'var(--surface-1)', zIndex: 10,
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 20, height: 20, borderRadius: '50%',
+                border: '2px solid var(--border-subtle)',
+                borderTop: '2px solid var(--accent)',
+                animation: 'spin 0.8s linear infinite',
+              }} />
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Loading chart…</span>
+            </div>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 10,
+          }}>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{error}</span>
+          </div>
+        )}
       </div>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
     </div>
   )
 }

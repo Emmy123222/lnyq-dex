@@ -1,4 +1,4 @@
-import type { OrderBookLevel, Trade, Candle, Pair, Position, Order, Trader } from '../types'
+import type { OrderBookLevel, Trade, Candle, Pair, Position, LegacyOrder, Trader } from '../types'
 
 export const PAIRS: Pair[] = [
   { base: 'LNYQNFT',   quote: 'USDC', type: 'perp',  lastPrice: 2456.00,  change24h:  5.21, volume24h: 48_200_000, high24h: 2501.00, low24h: 2318.00 },
@@ -84,7 +84,7 @@ export const POSITIONS: Position[] = [
   },
 ]
 
-export const OPEN_ORDERS: Order[] = [
+export const OPEN_ORDERS: LegacyOrder[] = [
   {
     id: 'o1',
     pair: PAIRS[1],
@@ -117,7 +117,7 @@ export const OPEN_ORDERS: Order[] = [
   },
 ]
 
-export const ORDER_HISTORY: Order[] = [
+export const ORDER_HISTORY: LegacyOrder[] = [
   {
     id: 'h1',
     pair: PAIRS[0],

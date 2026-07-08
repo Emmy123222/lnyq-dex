@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PAIRS } from '../data/mock'
+import { marketService } from '../services/marketService'
 import type { Pair } from '../types'
 
 function fmt(n: number, dec = 2) {
@@ -86,8 +86,28 @@ export default function MarketDetails() {
   const [search,  setSearch]  = useState('')
   const [filter,  setFilter]  = useState<'All' | 'Perps' | 'Spot'>('All')
   const [view,    setView]    = useState<'table' | 'grid'>('table')
+  const [pairs,   setPairs]   = useState<Pair[]>([])
 
-  const filtered = PAIRS.filter(p => {
+  useEffect(() => {
+    // Always fetch live market data from the backend
+    let cancelled = false
+    marketService.listAllMarkets().then(async res => {
+      if (cancelled || !res.ok) return
+      const built: Pair[] = await Promise.all(res.data.map(async m => {
+        const ticker = await marketService.getTicker(m.id)
+        const lastPrice  = ticker.ok ? parseFloat(ticker.data.lastPrice)  : m.isPhase1 ? 2452 : 946
+        const change24h  = ticker.ok ? parseFloat(ticker.data.change24h)  : 0
+        const volume24h  = ticker.ok ? parseFloat(ticker.data.volume24h)  : 0
+        const high24h    = ticker.ok ? parseFloat(ticker.data.high24h)    : lastPrice
+        const low24h     = ticker.ok ? parseFloat(ticker.data.low24h)     : lastPrice
+        return { base: m.baseAsset, quote: m.quoteAsset, type: m.type, lastPrice, change24h, volume24h, high24h, low24h }
+      }))
+      if (!cancelled) setPairs(built)
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  const filtered = pairs.filter(p => {
     const matchFilter = filter === 'All' || (filter === 'Perps' && p.type === 'perp') || (filter === 'Spot' && p.type === 'spot')
     const matchSearch = search === '' || p.base.toLowerCase().includes(search.toLowerCase())
     return matchFilter && matchSearch
