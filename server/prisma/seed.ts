@@ -105,7 +105,43 @@ async function main() {
       referencePrice: 18.75,
     },
   })
-  console.log('✓ 2 markets')
+
+  // Perp markets (Phase 2)
+  await prisma.market.upsert({
+    where:  { id: 'LNYQNFT-USDC-PERP' },
+    update: {},
+    create: {
+      id: 'LNYQNFT-USDC-PERP',
+      symbol: 'LNYQNFT-USDC-PERP',
+      baseAsset: 'LNYQNFT', quoteAsset: 'USDC',
+      collectionId: lnyqCollection.id,
+      type: 'perp', status: 'ACTIVE', isPhase1: false,
+      displayName: 'LNYQ NFT PERP / USDC',
+      tickSize: 0.01, minOrderSize: 1,
+      makerFeeBps: 5, takerFeeBps: 25,
+      referencePrice: 42.50,
+      maxLeverage: 5,
+    },
+  })
+
+  await prisma.market.upsert({
+    where:  { id: 'THEGOOMAN-USDC-PERP' },
+    update: {},
+    create: {
+      id: 'THEGOOMAN-USDC-PERP',
+      symbol: 'THEGOOMAN-USDC-PERP',
+      baseAsset: 'THEGOOMAN', quoteAsset: 'USDC',
+      collectionId: goomanCollection.id,
+      type: 'perp', status: 'ACTIVE', isPhase1: false,
+      displayName: 'The Gooman PERP / USDC',
+      tickSize: 0.01, minOrderSize: 1,
+      makerFeeBps: 5, takerFeeBps: 25,
+      referencePrice: 18.75,
+      maxLeverage: 5,
+    },
+  })
+
+  console.log('✓ 4 markets (2 spot + 2 perp)')
 
   // ── MM bot user ───────────────────────────────────────────────────────────────
 
@@ -118,7 +154,7 @@ async function main() {
     },
   })
 
-  // Unlimited balances for all assets
+  // Unlimited balances for all assets (spot + perp both need USDC)
   const mmAssets = ['USDC', 'LNYQNFT', 'THEGOOMAN']
   for (const asset of mmAssets) {
     await prisma.balance.upsert({
@@ -128,6 +164,21 @@ async function main() {
     })
   }
   console.log('✓ MM bot user + balances')
+
+  // Seed initial funding rates for perp markets
+  const perpMarkets = [
+    { id: 'LNYQNFT-USDC-PERP',  refPrice: 42.50 },
+    { id: 'THEGOOMAN-USDC-PERP', refPrice: 18.75 },
+  ]
+  for (const pm of perpMarkets) {
+    const exists = await (prisma as any).fundingRate.count({ where: { marketId: pm.id } })
+    if (!exists) {
+      await (prisma as any).fundingRate.create({
+        data: { marketId: pm.id, rate8h: 0.0001, markPrice: pm.refPrice },
+      })
+    }
+  }
+  console.log('✓ Initial funding rates')
 
   // ── Feature flags ─────────────────────────────────────────────────────────────
 

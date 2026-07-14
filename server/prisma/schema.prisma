@@ -100,6 +100,7 @@ model User {
   accessCodesUsed  AccessCode[]
   referralsMade    Referral[]   @relation("ReferrerRelation")
   referredFrom     Referral[]   @relation("ReferredRelation")
+  positions        Position[]
 
   @@index([email])
   @@index([sessionToken])
@@ -172,6 +173,8 @@ model Market {
   fills          Fill[]
   trades         Trade[]
   candles        Candle[]
+  positions      Position[]
+  fundingRates   FundingRate[]
 
   @@index([status])
   @@index([type])
@@ -204,6 +207,7 @@ model Order {
   remainingQuantity Int
   filledQuantity    Int         @default(0)
   status            OrderStatus @default(PENDING)
+  leverage          Int         @default(1)
   expiresAt         DateTime?
   clientOrderId     String?
   isMarketMaker     Boolean     @default(false)
@@ -329,4 +333,45 @@ model FeatureFlag {
   enabled   Boolean  @default(false)
   metadata  Json?
   updatedAt DateTime @updatedAt
+}
+
+// ── Perpetual positions ───────────────────────────────────────────────────────
+
+model Position {
+  id               String    @id @default(uuid())
+  userId           String
+  marketId         String
+  side             String    // 'long' | 'short'
+  size             Int       // contracts (base asset units)
+  entryPrice       Decimal   @db.Decimal(20, 8)
+  leverage         Int       @default(1)
+  liquidationPrice Decimal   @db.Decimal(20, 8)
+  unrealizedPnl    Decimal   @db.Decimal(20, 8) @default(0)
+  realizedPnl      Decimal   @db.Decimal(20, 8) @default(0)
+  margin           Decimal   @db.Decimal(20, 8)  // USDC locked as initial margin
+  markPrice        Decimal   @db.Decimal(20, 8) @default(0)
+  status           String    @default("OPEN")    // 'OPEN' | 'CLOSED' | 'LIQUIDATED'
+  openedAt         DateTime  @default(now())
+  closedAt         DateTime?
+
+  user             User      @relation(fields: [userId], references: [id])
+  market           Market    @relation(fields: [marketId], references: [id])
+
+  @@unique([userId, marketId, side])
+  @@index([userId, status])
+  @@index([marketId, status])
+}
+
+// ── Funding rates (perp markets) ─────────────────────────────────────────────
+
+model FundingRate {
+  id        String   @id @default(uuid())
+  marketId  String
+  rate8h    Decimal  @db.Decimal(20, 10)  // e.g. 0.0001 = 0.01% per 8h
+  markPrice Decimal  @db.Decimal(20, 8)
+  timestamp DateTime @default(now())
+
+  market    Market   @relation(fields: [marketId], references: [id])
+
+  @@index([marketId, timestamp])
 }

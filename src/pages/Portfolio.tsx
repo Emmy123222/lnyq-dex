@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import { portfolioService } from '../services/portfolioService'
 import { orderService, statusLabel } from '../services/orderService'
+import { authService } from '../services/authService'
 import type { PortfolioPosition, Order, Balance, PortfolioStats, OrderStatus } from '../types'
 
-const USER_ID = 'mock-user'
+function getUserId(): string {
+  const session = authService.loadSession()
+  return session?.userId ?? ''
+}
 
 function fmt(n: number, dec = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -102,10 +106,11 @@ export default function Portfolio() {
   const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
+    const userId = getUserId()
     Promise.all([
-      portfolioService.getPortfolio(USER_ID),
-      orderService.getOpenOrders(USER_ID),
-      orderService.getOrderHistory(USER_ID),
+      portfolioService.getPortfolio(userId),
+      orderService.getOpenOrders(userId),
+      orderService.getOrderHistory(userId),
     ]).then(([port, open, hist]) => {
       if (port.ok) {
         setStats(port.data.stats)
@@ -119,7 +124,8 @@ export default function Portfolio() {
   }, [])
 
   const handleCancel = async (orderId: string) => {
-    const res = await orderService.cancelOrder({ orderId, marketId: '' }, 'mock-session')
+    const session = authService.loadSession()
+    const res = await orderService.cancelOrder({ orderId, marketId: '' }, session?.sessionToken ?? '')
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
   }
 

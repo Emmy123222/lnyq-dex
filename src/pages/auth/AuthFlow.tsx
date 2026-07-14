@@ -226,7 +226,7 @@ function AccountSetupStep({ email, accessCodeToken, onNext }: { email: string; a
   )
 }
 
-function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; onNext: (claimed: boolean) => void }) {
+function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; onNext: (claimed: boolean, amount?: string) => void }) {
   const [loading, setLoading] = useState(false)
   const [claimed, setClaimed] = useState(false)
   const [error,   setError]   = useState('')
@@ -237,7 +237,7 @@ function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; on
     const res = await dripService.claim(sessionToken)
     setLoading(false)
     if (!res.ok) { setError(res.error.message); return }
-    if (res.data.success) { setClaimed(true); setTimeout(() => onNext(true), 1200) }
+    if (res.data.success) { setClaimed(true); setTimeout(() => onNext(true, res.data.amount), 1200) }
     else { setError(res.data.message ?? 'Claim failed — please try again.') }
   }
 
@@ -277,7 +277,7 @@ function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; on
   )
 }
 
-function WelcomeStep({ username, referralCode, onDone }: { username: string; referralCode: string; onDone: () => void }) {
+function WelcomeStep({ username, referralCode, claimedAmount, onDone }: { username: string; referralCode: string; claimedAmount?: string; onDone: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, textAlign: 'center' }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(46,189,133,0.14)', border: '1px solid #2EBD85', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -289,7 +289,7 @@ function WelcomeStep({ username, referralCode, onDone }: { username: string; ref
       </div>
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 4 }}>
         {[
-          { label: 'Balance',       value: '1,000.00 USDC', mono: true },
+          { label: 'Balance',       value: claimedAmount ? `${parseFloat(claimedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : 'Pending', mono: true },
           { label: 'Username',      value: username },
           { label: 'Referral Code', value: referralCode, mono: true },
           { label: 'Network',       value: ENV.CHAIN, small: true },
@@ -316,6 +316,7 @@ export default function AuthFlow() {
   const [username,         setUsername]        = useState('trader')
   const [referralCode,     setReferralCode]    = useState('')
   const [sessionToken,     setSessionToken]    = useState('')
+  const [claimedAmount,    setClaimedAmount]   = useState<string | undefined>()
 
   const renderStep = () => {
     switch (step) {
@@ -334,9 +335,9 @@ export default function AuthFlow() {
           />
         )
       case 'initial-funding':
-        return <InitialFundingStep sessionToken={sessionToken} onNext={() => setStep('welcome')} />
+        return <InitialFundingStep sessionToken={sessionToken} onNext={(_, amount) => { setClaimedAmount(amount); setStep('welcome') }} />
       case 'welcome':
-        return <WelcomeStep username={username} referralCode={referralCode} onDone={() => navigate('/markets')} />
+        return <WelcomeStep username={username} referralCode={referralCode} claimedAmount={claimedAmount} onDone={() => navigate('/markets')} />
     }
   }
 

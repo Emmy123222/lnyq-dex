@@ -16,8 +16,8 @@ import { marketService } from '../services/marketService'
 import { orderService, statusLabel } from '../services/orderService'
 import { portfolioService } from '../services/portfolioService'
 import { perpService } from '../services/perpService'
-import type { Market, Order, PortfolioPosition, OrderStatus, MarketTicker } from '../types'
-import type { OpenInterestInfo } from '../services/perpService'
+import type { Market, Order, OrderStatus, MarketTicker } from '../types'
+import type { OpenInterestInfo, PerpPosition } from '../services/perpService'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -68,25 +68,34 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   )
 }
 
-function PositionRow({ pos }: { pos: PortfolioPosition }) {
-  const marketLabel = pos.marketId.replace('-SPOT', '').replace('-PERP', '').replace('-', ' / ')
-  const isLong = pos.side === 'buy'
-  const pnlUp = pos.unrealizedPnl.startsWith('+')
+function PositionRow({ pos, onClose }: { pos: PerpPosition; onClose: (id: string) => void }) {
+  const marketLabel = pos.marketId.replace('-PERP', '').replace('-SPOT', '').replace(/-/g, ' / ')
+  const isLong = pos.side === 'long'
+  const pnlUp  = pos.unrealizedPnl.startsWith('+')
+  const liqColor = 'var(--down-500)'
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 0.8fr', padding: '13px 14px', borderTop: '1px solid var(--border-subtle)', alignItems: 'center' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.9fr 0.9fr 0.9fr 1.2fr 0.7fr', padding: '11px 14px', borderTop: '1px solid var(--border-subtle)', alignItems: 'center' }}>
       <div>
         <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{marketLabel}</div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: isLong ? 'var(--up-500)' : 'var(--down-500)' }}>{isLong ? 'Long' : 'Short'}</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: isLong ? 'var(--up-500)' : 'var(--down-500)' }}>
+          {isLong ? 'Long' : 'Short'} {pos.leverage}×
+        </div>
       </div>
-      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pos.quantity}</span>
+      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pos.size}</span>
       <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(parseFloat(pos.entryPrice))}</span>
       <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(parseFloat(pos.markPrice))}</span>
+      <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: liqColor, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(parseFloat(pos.liquidationPrice))}</span>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
         <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: pnlUp ? 'var(--up-500)' : 'var(--down-500)', fontVariantNumeric: 'tabular-nums' }}>{pos.unrealizedPnl}</span>
-        <span style={{ fontSize: 10, color: pnlUp ? 'var(--up-500)' : 'var(--down-500)' }}>({pos.unrealizedPnlPct})</span>
+        <span style={{ fontSize: 10, color: pnlUp ? 'var(--up-500)' : 'var(--down-500)' }}>{pos.unrealizedPnlPct}</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'var(--down-400)', background: 'rgba(246,70,93,0.12)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 4, cursor: 'pointer' }}>Close</button>
+        <button
+          onClick={() => onClose(pos.id)}
+          style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'var(--down-400)', background: 'rgba(246,70,93,0.12)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 4, cursor: 'pointer' }}
+        >
+          Close
+        </button>
       </div>
     </div>
   )
@@ -131,29 +140,36 @@ type PosTab = typeof POS_TABS[number]
 const USER_ID = 'mock-user'
 
 function PositionsPanel({ market }: { market: Market | null }) {
-  const [tab, setTab] = useState<PosTab>('Positions')
-  const [positions,   setPositions]   = useState<PortfolioPosition[]>([])
-  const [openOrders,  setOpenOrders]  = useState<Order[]>([])
-  const [orderHistory,setOrderHistory] = useState<Order[]>([])
-  const [loading,     setLoading]     = useState(true)
+  const [tab,          setTab]         = useState<PosTab>('Positions')
+  const [positions,    setPositions]   = useState<PerpPosition[]>([])
+  const [openOrders,   setOpenOrders]  = useState<Order[]>([])
+  const [orderHistory, setOrderHistory] = useState<Order[]>([])
+  const [loading,      setLoading]     = useState(true)
 
-  useEffect(() => {
+  const loadAll = () => {
     Promise.all([
-      portfolioService.getPositions(USER_ID),
+      FLAGS.PERPS ? perpService.getPositions() : Promise.resolve({ ok: true, data: [] } as const),
       orderService.getOpenOrders(USER_ID),
       orderService.getOrderHistory(USER_ID),
     ]).then(([pos, open, hist]) => {
-      if (pos.ok)  setPositions(pos.data)
+      if (pos.ok)  setPositions(pos.data as PerpPosition[])
       if (open.ok) setOpenOrders(open.data)
       if (hist.ok) setOrderHistory(hist.data)
       setLoading(false)
     })
-  }, [])
+  }
+
+  useEffect(() => { loadAll() }, []) // eslint-disable-line
 
   const handleCancel = async (orderId: string) => {
     if (!market) return
     const res = await orderService.cancelOrder({ orderId, marketId: market.id }, 'mock-session')
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
+  }
+
+  const handleClosePosition = async (positionId: string) => {
+    const res = await perpService.closePosition(positionId)
+    if (res.ok) setPositions(prev => prev.filter(p => p.id !== positionId))
   }
 
   if (loading) return <div style={{ padding: 20, fontSize: 12, color: 'var(--text-tertiary)' }}>Loading…</div>
@@ -170,15 +186,18 @@ function PositionsPanel({ market }: { market: Market | null }) {
 
       {tab === 'Positions' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 0.8fr', padding: '9px 14px', flexShrink: 0 }}>
-            {['Position', 'Size', 'Entry', 'Mark', 'PnL (USDC)', ''].map((h, i) => (
-              <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 && i < 5 ? 'right' : undefined }}>{h}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.8fr 0.9fr 0.9fr 0.9fr 1.2fr 0.7fr', padding: '9px 14px', flexShrink: 0 }}>
+            {['Position', 'Size', 'Entry', 'Mark', 'Liq.', 'PnL (USDC)', ''].map((h, i) => (
+              <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 && i < 6 ? 'right' : undefined }}>{h}</span>
             ))}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {positions.filter(p => !FLAGS.PERPS ? !p.marketId.includes('PERP') : true).map(pos => (
-              <PositionRow key={pos.marketId} pos={pos} />
-            ))}
+            {positions.length === 0
+              ? <div style={{ padding: '20px 16px', fontSize: 12, color: 'var(--text-tertiary)' }}>No open positions.</div>
+              : positions.map(pos => (
+                  <PositionRow key={pos.id} pos={pos} onClose={handleClosePosition} />
+                ))
+            }
           </div>
         </>
       )}

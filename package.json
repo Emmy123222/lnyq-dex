@@ -8,7 +8,8 @@
     "sim": "cd server && npm run dev",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:no-mock-data": "node scripts/check-no-mock-data.mjs"
   },
   "dependencies": {
     "@tabler/icons-react": "^2.47.0",

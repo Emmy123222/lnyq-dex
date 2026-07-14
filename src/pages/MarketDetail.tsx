@@ -9,22 +9,13 @@ const TF_INTERVAL: Record<string, '1h' | '1D' | '1D' | '1D' | '1D'> = {
   '1H': '1h', '1D': '1D', '1W': '1D', '1M': '1D', 'All': '1D',
 }
 
-const TOP_HOLDERS = [
-  { initials: 'AP', name: 'alpha_prime',   nfts: '842',  pct: '12.5%', swatch: 'linear-gradient(135deg,#A051FC,#531C97)' },
-  { initials: 'BD', name: 'bookdepth',     nfts: '614',  pct: '9.1%',  swatch: 'linear-gradient(135deg,#3A8DFF,#1456b0)' },
-  { initials: 'NM', name: 'nft_macro',     nfts: '521',  pct: '7.7%',  swatch: 'linear-gradient(135deg,#2EBD85,#1a7a55)' },
-  { initials: 'CH', name: 'clob_hunter',   nfts: '388',  pct: '5.8%',  swatch: 'linear-gradient(135deg,#F0A500,#8a5e00)' },
-  { initials: 'SS', name: 'spreadseller',  nfts: '312',  pct: '4.6%',  swatch: 'linear-gradient(135deg,#F6465D,#8a1a2a)' },
-  { initials: 'O9', name: 'orderflow9',    nfts: '289',  pct: '4.3%',  swatch: 'linear-gradient(135deg,#6b3fa0,#34205c)' },
-]
-
 const STATS = [
   { label: '24h Volume',    value: '—' },
   { label: 'Market Cap',    value: '—' },
   { label: 'Open Interest', value: '—' },
   { label: 'Funding',       value: '—', green: true },
-  { label: 'Holders',       value: '3,184' },
-  { label: 'Supply',        value: '6,742' },
+  { label: 'Holders',       value: '—' },
+  { label: 'Supply',        value: '—' },
   { label: 'All-Time High', value: '—' },
 ]
 
@@ -254,28 +245,13 @@ export default function MarketDetail() {
           </div>
         </div>
 
-        {/* RIGHT — top holders */}
+        {/* RIGHT — top holders (unavailable until on-chain indexer provides data) */}
         <div style={{ flex: '0 0 320px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Top Holders</span>
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>of 3,184</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 0.7fr', padding: '9px 16px', flexShrink: 0, borderBottom: '1px solid var(--border-subtle)' }}>
-            {['Wallet', 'NFTs', 'Share'].map((h, i) => (
-              <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {TOP_HOLDERS.map((h, i) => (
-              <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.7fr 0.7fr', alignItems: 'center', padding: '11px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                  <span style={{ width: 26, height: 26, borderRadius: 6, background: h.swatch, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 900, color: '#fff', flexShrink: 0 }}>{h.initials}</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</span>
-                </span>
-                <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', textAlign: 'right' }}>{h.nfts}</span>
-                <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)', textAlign: 'right' }}>{h.pct}</span>
-              </div>
-            ))}
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)', textAlign: 'center', padding: '0 20px', lineHeight: 1.6 }}>Holder data unavailable. On-chain indexer not configured.</span>
           </div>
         </div>
       </div>

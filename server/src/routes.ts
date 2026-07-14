@@ -8,7 +8,7 @@
 import { Router }     from 'express'
 import { randomUUID } from 'crypto'
 import { prisma }     from './db.js'
-import { placeOrder, cancelOrder, CANDLE_INTERVALS } from './engine.js'
+import { placeOrder, cancelOrder, closePosition, CANDLE_INTERVALS } from './engine.js'
 import type { CandleInterval } from './types.js'
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -339,7 +339,7 @@ export function buildRouter(): Router {
     const ctx = await requireSession(req.headers.authorization)
     if (!ctx) return res.status(401).json({ error: 'Unauthorized' })
 
-    const { marketId, side, type, price, quantity, timeInForce, expiresAt } =
+    const { marketId, side, type, price, quantity, timeInForce, expiresAt, leverage } =
       req.body as Record<string, unknown>
 
     if (!marketId || !side || !type || !quantity || !timeInForce) {
@@ -355,6 +355,7 @@ export function buildRouter(): Router {
       quantity:    Number(quantity),
       timeInForce: timeInForce as 'GTC' | 'IOC' | 'FOK' | 'GTD',
       expiresAt:   expiresAt ? new Date(Number(expiresAt)) : undefined,
+      leverage:    leverage !== undefined ? Number(leverage) : undefined,
     })
 
     if ('error' in result) return res.status(400).json({ error: result.error })
@@ -406,7 +407,7 @@ export function buildRouter(): Router {
     const ctx = await requireSession(req.headers.authorization)
     if (!ctx) return res.status(401).json({ error: 'Unauthorized' })
 
-    const [balances, openOrders, fills, markets] = await Promise.all([
+    const [balances, openOrders, fills, markets, positions] = await Promise.all([
       prisma.balance.findMany({ where: { userId: ctx.userId } }),
       prisma.order.findMany({
         where: { userId: ctx.userId, status: { in: ['OPEN', 'PARTIALLY_FILLED', 'PENDING'] } },
@@ -417,15 +418,29 @@ export function buildRouter(): Router {
         orderBy: { createdAt: 'desc' },
       }),
       prisma.market.findMany({ where: { status: 'ACTIVE' } }),
+      (prisma as any).position.findMany({ where: { userId: ctx.userId, status: 'OPEN' } }),
     ])
 
     const refPrices = new Map(markets.map(m => [m.baseAsset, Number(m.referencePrice)]))
-    const totalFees = fills.reduce((s, f) => s + Number(f.fee), 0)
+    const markById  = new Map(markets.map(m => [m.id, Number(m.referencePrice)]))
+    const totalFees = fills.reduce((s: number, f: any) => s + Number(f.fee), 0)
     const usdcBal   = balances.find(b => b.asset === 'USDC')
     const equity    = balances.reduce((s, b) => {
       const val = Number(b.available) + Number(b.locked)
       return s + (b.asset === 'USDC' ? val : val * (refPrices.get(b.asset) ?? 0))
     }, 0)
+
+    // Aggregate unrealized PnL across open perp positions
+    let totalUnrealizedPnl = 0
+    let totalMarginUsed    = 0
+    for (const p of positions) {
+      const mark  = markById.get(p.marketId) ?? Number(p.entryPrice)
+      const upnl  = p.side === 'long'
+        ? (mark - Number(p.entryPrice)) * p.size
+        : (Number(p.entryPrice) - mark) * p.size
+      totalUnrealizedPnl += upnl
+      totalMarginUsed    += Number(p.margin)
+    }
 
     const history = await prisma.order.findMany({
       where:   { userId: ctx.userId },
@@ -451,12 +466,16 @@ export function buildRouter(): Router {
         availableBalance: Number(usdcBal?.available ?? 0).toFixed(2),
         lockedBalance:    Number(usdcBal?.locked ?? 0).toFixed(2),
         totalFeesPaid:    totalFees.toFixed(2),
-        unrealizedPnl:    '0.00',
-        unrealizedPnlPct: '0.00%',
+        unrealizedPnl:    (totalUnrealizedPnl >= 0 ? '+' : '') + totalUnrealizedPnl.toFixed(2),
+        unrealizedPnlPct: equity > 0
+          ? (totalUnrealizedPnl >= 0 ? '+' : '') + ((totalUnrealizedPnl / equity) * 100).toFixed(2) + '%'
+          : '0.00%',
         allTimePnl:       '0.00',
         allTimePnlPct:    '0.00%',
-        marginUsed:       '0.00',
-        crossMarginRatio: '0.00',
+        marginUsed:       totalMarginUsed.toFixed(2),
+        crossMarginRatio: totalMarginUsed > 0 && equity > 0
+          ? ((totalMarginUsed / equity) * 100).toFixed(1) + '%'
+          : '0.00%',
       },
       openOrders:   openOrders.map(serializeOrder),
       orderHistory: history.map(serializeOrder),
@@ -611,6 +630,138 @@ export function buildRouter(): Router {
     if (ctx.userId !== req.params.userId) return res.status(403).json({ error: 'Forbidden' })
     // Redirect to the canonical portfolio handler
     res.redirect(307, '/api/portfolio')
+  })
+
+  // ── Perpetual: funding rate ───────────────────────────────────────────────────
+
+  r.get('/markets/:id/funding', async (req, res) => {
+    const market = await prisma.market.findUnique({ where: { id: req.params.id } })
+    if (!market) return res.status(404).json({ error: 'Not found' })
+
+    const latest = await (prisma as any).fundingRate.findFirst({
+      where:   { marketId: req.params.id },
+      orderBy: { timestamp: 'desc' },
+    })
+
+    const rate8h = latest ? Number(latest.rate8h) : 0.0001
+    const mark   = latest ? Number(latest.markPrice) : Number(market.referencePrice)
+
+    const rateAnnualized = rate8h * 3 * 365 * 100  // 3 periods/day × 365 × 100%
+    const sign8h         = rate8h >= 0 ? '+' : ''
+    const signAnn        = rateAnnualized >= 0 ? '+' : ''
+
+    const paysDirection = rate8h > 0.00001  ? 'longs-pay-shorts'
+                        : rate8h < -0.00001 ? 'shorts-pay-longs'
+                        : 'neutral'
+
+    // Next funding time: 00:00, 08:00, or 16:00 UTC
+    const now    = new Date()
+    const h      = now.getUTCHours()
+    const nextH  = h < 8 ? 8 : h < 16 ? 16 : 24
+    const next   = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    if (nextH < 24) {
+      next.setUTCHours(nextH, 0, 0, 0)
+    } else {
+      next.setUTCDate(next.getUTCDate() + 1)
+      next.setUTCHours(0, 0, 0, 0)
+    }
+
+    res.json({ ok: true, data: {
+      marketId:       req.params.id,
+      rate8h:         `${sign8h}${(rate8h * 100).toFixed(4)}`,
+      rateAnnualized: `${signAnn}${rateAnnualized.toFixed(2)}`,
+      markPrice:      mark.toFixed(2),
+      paysDirection,
+      nextFundingMs:  next.getTime(),
+    } })
+  })
+
+  // ── Perpetual: open interest ──────────────────────────────────────────────────
+
+  r.get('/markets/:id/oi', async (req, res) => {
+    const market = await prisma.market.findUnique({ where: { id: req.params.id } })
+    if (!market) return res.status(404).json({ error: 'Not found' })
+
+    const positions = await (prisma as any).position.findMany({
+      where: { marketId: req.params.id, status: 'OPEN' },
+    })
+
+    const markPrice  = Number(market.referencePrice)
+    let longNotional = 0
+    let shortNotional = 0
+
+    for (const p of positions) {
+      const n = p.size * markPrice
+      if (p.side === 'long')  longNotional  += n
+      else                    shortNotional += n
+    }
+
+    const totalNotional = longNotional + shortNotional
+    const longPct  = totalNotional > 0 ? ((longNotional  / totalNotional) * 100).toFixed(1) : '50.0'
+    const shortPct = totalNotional > 0 ? ((shortNotional / totalNotional) * 100).toFixed(1) : '50.0'
+
+    res.json({ ok: true, data: {
+      marketId:  req.params.id,
+      notional:  totalNotional.toFixed(2),
+      longPct,
+      shortPct,
+    } })
+  })
+
+  // ── Perpetual: positions ──────────────────────────────────────────────────────
+
+  r.get('/positions', async (req, res) => {
+    const ctx = await requireSession(req.headers.authorization)
+    if (!ctx) return res.status(401).json({ error: 'Unauthorized' })
+
+    const positions = await (prisma as any).position.findMany({
+      where:   { userId: ctx.userId, status: 'OPEN' },
+      orderBy: { openedAt: 'desc' },
+    })
+
+    const markets = await prisma.market.findMany({ where: { status: 'ACTIVE' } })
+    const markMap = new Map(markets.map(m => [m.id, Number(m.referencePrice)]))
+
+    res.json({ ok: true, data: positions.map((p: any) => {
+      const mark      = markMap.get(p.marketId) ?? Number(p.entryPrice)
+      const entry     = Number(p.entryPrice)
+      const size      = p.size
+      const upnl      = p.side === 'long'
+        ? (mark - entry) * size
+        : (entry - mark) * size
+      const margin    = Number(p.margin)
+      const roe       = margin > 0 ? (upnl / margin) * 100 : 0
+      const liqPrice  = Number(p.liquidationPrice)
+
+      return {
+        id:              p.id,
+        marketId:        p.marketId,
+        side:            p.side,
+        size:            p.size,
+        entryPrice:      entry.toFixed(2),
+        markPrice:       mark.toFixed(2),
+        liquidationPrice: liqPrice.toFixed(2),
+        leverage:        p.leverage,
+        margin:          margin.toFixed(2),
+        unrealizedPnl:   upnl.toFixed(2),
+        unrealizedPnlPct: `${upnl >= 0 ? '+' : ''}${roe.toFixed(2)}%`,
+        realizedPnl:     Number(p.realizedPnl).toFixed(2),
+        openedAt:        p.openedAt.toISOString(),
+      }
+    }) })
+  })
+
+  r.post('/positions/:id/close', async (req, res) => {
+    const ctx = await requireSession(req.headers.authorization)
+    if (!ctx) return res.status(401).json({ error: 'Unauthorized' })
+
+    const result = await closePosition(req.params.id, ctx.userId)
+    if ('error' in result) return res.status(400).json({ error: result.error })
+
+    res.json({ ok: true, data: {
+      closed:       true,
+      realizedPnl:  result.realizedPnl.toFixed(2),
+    } })
   })
 
   // ── Feature flags ─────────────────────────────────────────────────────────────
