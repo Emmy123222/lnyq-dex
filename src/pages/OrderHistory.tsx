@@ -79,7 +79,8 @@ export default function OrderHistory() {
 
   const handleCancel = async (orderId: string) => {
     const { token } = getSession()
-    const res = await orderService.cancelOrder({ orderId, marketId: '' }, token)
+    const order = openOrders.find(o => o.id === orderId)
+    const res = await orderService.cancelOrder({ orderId, marketId: order?.marketId ?? '' }, token)
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
   }
 

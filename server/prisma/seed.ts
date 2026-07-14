@@ -6,10 +6,13 @@
  * Creates:
  *   - 1000 testnet access codes (LNYQ-TESTNET-0001 … LNYQ-TESTNET-1000)
  *   - 100 alpha codes (ALPHA-0001 … ALPHA-0100)
- *   - Demo codes (DEMO-ACCESS, LNYQ-DEMO, TEST-0001 … TEST-0003)
- *   - 2 spot markets: LNYQNFT-USDC-SPOT, THEGOOMAN-USDC-SPOT
+ *   - 2 spot markets (ACTIVE): LNYQNFT-USDC-SPOT, THEGOOMAN-USDC-SPOT
+ *   - 2 perp markets (INACTIVE, Phase 2): LNYQNFT-USDC-PERP, THEGOOMAN-USDC-PERP
  *   - MM bot user with unlimited balances
  *   - Default feature flags
+ *
+ * NOT seeded here (add manually for local dev only):
+ *   - Demo codes (DEMO-ACCESS, LNYQ-DEMO, TEST-0001 … TEST-0003)
  */
 
 import { PrismaClient } from '@prisma/client'
@@ -31,14 +34,8 @@ async function main() {
   for (let i = 1; i <= 100; i++) {
     codes.push({ code: `ALPHA-${String(i).padStart(4, '0')}` })
   }
-  // Demo codes
-  codes.push(
-    { code: 'DEMO-ACCESS' },
-    { code: 'LNYQ-DEMO'   },
-    { code: 'TEST-0001'   },
-    { code: 'TEST-0002'   },
-    { code: 'TEST-0003'   },
-  )
+  // Note: Demo/test codes (DEMO-ACCESS, LNYQ-DEMO, TEST-0001–0003) are local-only.
+  // Do NOT seed them into devnet or staging. Add them manually in local dev only.
 
   let codesCreated = 0
   for (const c of codes) {
@@ -58,7 +55,7 @@ async function main() {
     update: {},
     create: {
       name: 'LNYQ NFT', symbol: 'LNYQNFT',
-      supply: 10_000, chain: 'solana', whitelistStatus: 'APPROVED',
+      supply: 1_000_000, chain: 'solana', whitelistStatus: 'APPROVED',
     },
   })
 
@@ -67,7 +64,7 @@ async function main() {
     update: {},
     create: {
       name: 'The Gooman', symbol: 'THEGOOMAN',
-      supply: 5_555, chain: 'solana', whitelistStatus: 'APPROVED',
+      supply: 1_000_000, chain: 'solana', whitelistStatus: 'APPROVED',
     },
   })
   console.log('✓ 2 collections')
@@ -115,7 +112,7 @@ async function main() {
       symbol: 'LNYQNFT-USDC-PERP',
       baseAsset: 'LNYQNFT', quoteAsset: 'USDC',
       collectionId: lnyqCollection.id,
-      type: 'perp', status: 'ACTIVE', isPhase1: false,
+      type: 'perp', status: 'INACTIVE', isPhase1: false,
       displayName: 'LNYQ NFT PERP / USDC',
       tickSize: 0.01, minOrderSize: 1,
       makerFeeBps: 5, takerFeeBps: 25,
@@ -132,7 +129,7 @@ async function main() {
       symbol: 'THEGOOMAN-USDC-PERP',
       baseAsset: 'THEGOOMAN', quoteAsset: 'USDC',
       collectionId: goomanCollection.id,
-      type: 'perp', status: 'ACTIVE', isPhase1: false,
+      type: 'perp', status: 'INACTIVE', isPhase1: false,
       displayName: 'The Gooman PERP / USDC',
       tickSize: 0.01, minOrderSize: 1,
       makerFeeBps: 5, takerFeeBps: 25,
@@ -165,20 +162,8 @@ async function main() {
   }
   console.log('✓ MM bot user + balances')
 
-  // Seed initial funding rates for perp markets
-  const perpMarkets = [
-    { id: 'LNYQNFT-USDC-PERP',  refPrice: 42.50 },
-    { id: 'THEGOOMAN-USDC-PERP', refPrice: 18.75 },
-  ]
-  for (const pm of perpMarkets) {
-    const exists = await (prisma as any).fundingRate.count({ where: { marketId: pm.id } })
-    if (!exists) {
-      await (prisma as any).fundingRate.create({
-        data: { marketId: pm.id, rate8h: 0.0001, markPrice: pm.refPrice },
-      })
-    }
-  }
-  console.log('✓ Initial funding rates')
+  // Funding rates are seeded by mm.ts when perp markets go ACTIVE (Phase 2).
+  // Do not seed them here — perp markets are INACTIVE in Phase 1.
 
   // ── Feature flags ─────────────────────────────────────────────────────────────
 

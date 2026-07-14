@@ -5,7 +5,7 @@
  * Run: npm run check:no-mock-data
  */
 
-import { readFileSync, readdirSync, statSync } from 'fs'
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs'
 import { join, relative, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
@@ -13,6 +13,12 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname  = dirname(__filename)
 const ROOT = join(__dirname, '..')
 const SRC  = join(ROOT, 'src')
+
+// Explicit file-existence check: src/data/mock.ts must not exist in production source
+if (existsSync(join(SRC, 'data', 'mock.ts'))) {
+  console.error('[check:no-mock-data] src/data/mock.ts exists — delete it or move to test fixtures before building.')
+  process.exit(1)
+}
 
 const FORBIDDEN_PATTERNS = [
   /from\s+['"][^'"]*data\/mock['"]/,

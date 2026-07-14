@@ -1,30 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { chartService } from '../services/chartService'
 import { orderBookService } from '../services/orderBookService'
-import type { Candle, OrderBook } from '../types'
+import { marketService } from '../services/marketService'
+import type { Candle, Market, OrderBook } from '../types'
 
 const TIMEFRAMES = ['1H', '1D', '1W', '1M', 'All']
-const TF_INTERVAL: Record<string, '1h' | '1D' | '1D' | '1D' | '1D'> = {
+const TF_INTERVAL: Record<string, '1h' | '1D'> = {
   '1H': '1h', '1D': '1D', '1W': '1D', '1M': '1D', 'All': '1D',
 }
-
-const STATS = [
-  { label: '24h Volume',    value: '—' },
-  { label: 'Market Cap',    value: '—' },
-  { label: 'Open Interest', value: '—' },
-  { label: 'Funding',       value: '—', green: true },
-  { label: 'Holders',       value: '—' },
-  { label: 'Supply',        value: '—' },
-  { label: 'All-Time High', value: '—' },
-]
 
 function formatPrice(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function MiniChart({ candles }: { candles: Candle[] }) {
-  const canvasRef   = useRef<HTMLCanvasElement>(null)
+  const canvasRef    = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -76,7 +67,7 @@ function MiniChart({ candles }: { candles: Candle[] }) {
     <div ref={containerRef} style={{ flex: 1, position: 'relative', minHeight: 0 }}>
       {candles.length === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading chart…</span>
+          <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No trades yet</span>
         </div>
       )}
       <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
@@ -84,30 +75,61 @@ function MiniChart({ candles }: { candles: Candle[] }) {
   )
 }
 
-const MARKET_ID = 'LNYQNFT-USDC-SPOT'
-
 export default function MarketDetail() {
   const navigate = useNavigate()
-  const [tf, setTf]         = useState('1D')
-  const [candles, setCandles] = useState<Candle[]>([])
-  const [book, setBook]       = useState<OrderBook | null>(null)
+  const { symbol } = useParams<{ symbol: string }>()
+  const marketId = symbol ?? ''
+
+  const [tf, setTf]             = useState('1D')
+  const [candles, setCandles]   = useState<Candle[]>([])
+  const [book, setBook]         = useState<OrderBook | null>(null)
+  const [market, setMarket]     = useState<Market | null>(null)
+  const [marketError, setMarketError] = useState(false)
 
   useEffect(() => {
+    if (!marketId) return
+    marketService.getMarket(marketId).then(res => {
+      if (res.ok) setMarket(res.data)
+      else setMarketError(true)
+    })
+  }, [marketId])
+
+  useEffect(() => {
+    if (!marketId) return
     let cancelled = false
     const interval = (TF_INTERVAL[tf] ?? '1D') as '1m' | '5m' | '15m' | '1h' | '4h' | '1D'
-    chartService.getCandles(MARKET_ID, interval, 60).then(res => {
+    chartService.getCandles(marketId, interval, 60).then(res => {
       if (!cancelled && res.ok) setCandles(res.data)
     })
     return () => { cancelled = true }
-  }, [tf])
+  }, [tf, marketId])
 
   useEffect(() => {
-    orderBookService.getOrderBook(MARKET_ID).then(res => {
+    if (!marketId) return
+    orderBookService.getOrderBook(marketId).then(res => {
       if (res.ok) setBook(res.data)
     })
-    return orderBookService.subscribe(MARKET_ID, b => setBook(b))
-  }, [])
+    return orderBookService.subscribe(marketId, b => setBook(b))
+  }, [marketId])
 
+  if (!marketId) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>No market specified.</span>
+      </div>
+    )
+  }
+
+  if (marketError) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 10 }}>
+        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Market unavailable or not found.</span>
+        <button onClick={() => navigate('/markets')} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>Back to Markets</button>
+      </div>
+    )
+  }
+
+  const baseSymbol = market?.baseAsset ?? marketId.split('-')[0]
   const last = candles[candles.length - 1]
   const asks = book?.asks.slice(0, 8) ?? []
   const bids = book?.bids.slice(0, 8) ?? []
@@ -123,14 +145,21 @@ export default function MarketDetail() {
       {/* Asset hero */}
       <div style={{ height: 96, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--surface-1)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <span style={{ width: 56, height: 56, borderRadius: 12, background: 'linear-gradient(135deg,#A051FC,#531C97)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 900, color: '#fff', flexShrink: 0 }}>L</span>
+          <span style={{ width: 56, height: 56, borderRadius: 12, background: 'linear-gradient(135deg,#A051FC,#531C97)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 900, color: '#fff', flexShrink: 0 }}>
+            {baseSymbol.slice(0, 1)}
+          </span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>LNYQNFT/USDC</span>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--accent-tint)', color: 'var(--accent)' }}>SPOT</span>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>HIP-3</span>
+              <span style={{ fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
+                {market?.displayName ?? marketId}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--accent-tint)', color: 'var(--accent)', textTransform: 'uppercase' }}>
+                {market?.type ?? 'SPOT'}
+              </span>
             </div>
-            <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>LNYQ Genesis · 6,742 NFTs traded as a fungible book · verified collection</span>
+            <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+              {baseSymbol} · fungible collection token order book
+            </span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 22 }}>
@@ -148,9 +177,17 @@ export default function MarketDetail() {
       </div>
 
       {/* Stat strip */}
-      <div style={{ height: 72, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-base)' }}>
-        {STATS.map((s, i) => (
-          <div key={s.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4, padding: i === 0 ? '0 24px 0 0' : '0 24px', borderLeft: i > 0 ? '1px solid var(--border-subtle)' : 'none' }}>
+      <div style={{ height: 72, flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 24px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-base)', overflowX: 'auto' }}>
+        {[
+          { label: '24h Volume',    value: '—' },
+          { label: 'Market Cap',    value: '—' },
+          { label: 'Open Interest', value: '—' },
+          { label: 'Funding',       value: '—', green: true },
+          { label: 'Holders',       value: '—' },
+          { label: 'Supply',        value: '—' },
+          { label: 'All-Time High', value: '—' },
+        ].map((s, i) => (
+          <div key={s.label} style={{ flex: '0 0 auto', minWidth: 120, display: 'flex', flexDirection: 'column', gap: 4, padding: i === 0 ? '0 24px 0 0' : '0 24px', borderLeft: i > 0 ? '1px solid var(--border-subtle)' : 'none' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>{s.label}</span>
             <span style={{ fontSize: 16, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: s.green ? 'var(--up-500)' : 'var(--text-primary)' }}>{s.value}</span>
           </div>
@@ -166,7 +203,7 @@ export default function MarketDetail() {
             <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
                 <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>Price</span>
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC per NFT</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC per {baseSymbol}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 3 }}>
                 {TIMEFRAMES.map(t => (
@@ -178,23 +215,23 @@ export default function MarketDetail() {
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '8px 16px 0' }}>
               <span style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{last ? formatPrice(last.close) : '—'}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC per NFT</span>
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC per {baseSymbol}</span>
             </div>
             <MiniChart candles={candles} />
           </div>
 
           <div style={{ flexShrink: 0, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: '20px 22px', display: 'flex', gap: 36 }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>About LNYQNFT</span>
+              <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>About {baseSymbol}</span>
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                LNYQ Genesis is a 6,742-piece collection made fungible by the LNYQ order book. Every NFT trades against a deep central limit order book — spot for instant settlement. Floor price discovery is continuous.
+                {baseSymbol} collection tokens trade against a central limit order book. Each unit is a fungible collection token settled in USDC.
               </p>
             </div>
             <div style={{ flex: '0 0 280px', display: 'flex', flexDirection: 'column', gap: 11, paddingLeft: 36, borderLeft: '1px solid var(--border-subtle)' }}>
               {[
-                { label: 'Chain',        value: 'Solana Devnet' },
-                { label: 'Royalty',      value: '2.5%' },
-                { label: 'Supply',       value: '6,742' },
+                { label: 'Chain',        value: '—' },
+                { label: 'Royalty',      value: '—' },
+                { label: 'Supply',       value: '—' },
                 { label: 'Listed Since', value: 'Phase 1' },
               ].map(r => (
                 <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -210,10 +247,10 @@ export default function MarketDetail() {
         <div style={{ flex: '0 0 300px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', borderBottom: '1px solid var(--border-subtle)' }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Order Book</span>
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>NFTs</span>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{baseSymbol}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-            {['Price', 'NFTs', 'Total'].map((h, i) => (
+            {['Price', baseSymbol, 'Total'].map((h, i) => (
               <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
             ))}
           </div>

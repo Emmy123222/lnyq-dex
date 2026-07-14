@@ -93,9 +93,9 @@ export function buildRouter(): Router {
         data:  { status: 'USED', usedByUserId: userId, usedAt: new Date() },
       })
 
-      // Give 10,000 USDC testnet balance on signup
+      // Phase 1: 1,000 testnet USDC one-time grant on signup
       await tx.balance.create({
-        data: { userId, asset: 'USDC', available: 10_000, locked: 0, pending: 0 },
+        data: { userId, asset: 'USDC', available: 1_000, locked: 0, pending: 0 },
       })
 
       if (referredById && referredByCode) {
