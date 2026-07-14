@@ -12,10 +12,16 @@ import RecentTrades from '../components/trading/RecentTrades'
 import OrderEntry from '../components/trading/OrderEntry'
 import FundingRateBar from '../components/trading/FundingRateBar'
 import { FLAGS, gateLabel } from '../config/featureFlags'
+import { authService } from '../services/authService'
 import { marketService } from '../services/marketService'
 import { orderService, statusLabel } from '../services/orderService'
 import { portfolioService } from '../services/portfolioService'
 import { perpService } from '../services/perpService'
+
+function getSession() {
+  const s = authService.loadSession()
+  return { userId: s?.userId ?? '', token: s?.sessionToken ?? '' }
+}
 import type { Market, Order, OrderStatus, MarketTicker } from '../types'
 import type { OpenInterestInfo, PerpPosition } from '../services/perpService'
 
@@ -137,8 +143,6 @@ function HistoryRow({ order }: { order: Order }) {
 const POS_TABS = ['Positions', 'Open Orders', 'Order History'] as const
 type PosTab = typeof POS_TABS[number]
 
-const USER_ID = 'mock-user'
-
 function PositionsPanel({ market }: { market: Market | null }) {
   const [tab,          setTab]         = useState<PosTab>('Positions')
   const [positions,    setPositions]   = useState<PerpPosition[]>([])
@@ -147,10 +151,11 @@ function PositionsPanel({ market }: { market: Market | null }) {
   const [loading,      setLoading]     = useState(true)
 
   const loadAll = () => {
+    const { userId } = getSession()
     Promise.all([
       FLAGS.PERPS ? perpService.getPositions() : Promise.resolve({ ok: true, data: [] } as const),
-      orderService.getOpenOrders(USER_ID),
-      orderService.getOrderHistory(USER_ID),
+      orderService.getOpenOrders(userId),
+      orderService.getOrderHistory(userId),
     ]).then(([pos, open, hist]) => {
       if (pos.ok)  setPositions(pos.data as PerpPosition[])
       if (open.ok) setOpenOrders(open.data)
@@ -163,7 +168,8 @@ function PositionsPanel({ market }: { market: Market | null }) {
 
   const handleCancel = async (orderId: string) => {
     if (!market) return
-    const res = await orderService.cancelOrder({ orderId, marketId: market.id }, 'mock-session')
+    const { token } = getSession()
+    const res = await orderService.cancelOrder({ orderId, marketId: market.id }, token)
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
   }
 
@@ -256,10 +262,11 @@ export default function TradePage() {
         ?? res.data[0]
       if (first) setActiveMarket(first)
     })
-    portfolioService.getStats(USER_ID).then(res => {
+    const { userId } = getSession()
+    portfolioService.getStats(userId).then(res => {
       if (res.ok) setAvailableUsdc(parseFloat(res.data.availableBalance))
     })
-    portfolioService.getPositions(USER_ID).then(res => {
+    portfolioService.getPositions(userId).then(res => {
       if (res.ok) {
         const lnyq = res.data.find(p => p.marketId.includes('LNYQNFT'))
         if (lnyq) setAvailableBase(parseInt(lnyq.quantity))

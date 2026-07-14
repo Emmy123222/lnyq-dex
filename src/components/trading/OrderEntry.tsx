@@ -132,10 +132,10 @@ export default function OrderEntry({
   isPerp = false,
   prefillPrice,
   pair,
-  availableUsdc = 50000,
-  availableBase = 5,
-  sessionToken = 'mock-session',
-  userId: _userId = 'mock-user',
+  availableUsdc = 0,
+  availableBase = 0,
+  sessionToken = '',
+  userId: _userId = '',
 }: OrderEntryProps) {
   const { toast } = useToast()
   const [side,     setSide]     = useState<OrderSide>('buy')

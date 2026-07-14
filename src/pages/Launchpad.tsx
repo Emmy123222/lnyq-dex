@@ -21,48 +21,15 @@ interface PresaleListing {
   symbol: string
   status: 'upcoming' | 'active' | 'ended'
   supply: number
-  allocationPrice: string    // USDC per NFT
-  raiseTarget: string        // USDC
-  raised: string             // USDC raised so far
-  allocationRemaining: number // NFTs
+  allocationPrice: string
+  raiseTarget: string
+  raised: string
+  allocationRemaining: number
   startDate: string
   endDate: string
   description: string
-  protocolFee: string        // e.g. "15%"
+  protocolFee: string
 }
-
-const MOCK_LISTINGS: PresaleListing[] = [
-  {
-    id: 'lnyqnft-s2',
-    collection: 'LNYQ NFT Series 2',
-    symbol: 'LNYQNFT2',
-    status: 'upcoming',
-    supply: 5000,
-    allocationPrice: '750.00',
-    raiseTarget: '3750000',
-    raised: '0',
-    allocationRemaining: 5000,
-    startDate: '2026-08-01',
-    endDate: '2026-08-14',
-    description: 'Second series of the LNYQ NFT collection. Allocations are distributed by CLOB trade volume from Phase 1 testnet participation.',
-    protocolFee: '15%',
-  },
-  {
-    id: 'thegooman-og',
-    collection: 'The Gooman OG',
-    symbol: 'TGOOG',
-    status: 'upcoming',
-    supply: 2222,
-    allocationPrice: '1200.00',
-    raiseTarget: '2666400',
-    raised: '0',
-    allocationRemaining: 2222,
-    startDate: '2026-08-15',
-    endDate: '2026-08-22',
-    description: 'OG collection for early Gooman holders. Presale is allocation-based with a fixed price. CLOB listing follows presale close.',
-    protocolFee: '12%',
-  },
-]
 
 function fmt(n: number, dec = 0) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -174,8 +141,9 @@ type FilterTab = typeof FILTER_TABS[number]
 
 export default function Launchpad() {
   const [filter, setFilter] = useState<FilterTab>('All')
-
-  const displayed = MOCK_LISTINGS.filter(l =>
+  // Listings come from the backend when PRESALE is enabled. No static data.
+  const listings: PresaleListing[] = []
+  const displayed = listings.filter(l =>
     filter === 'All' ? true : l.status === filter.toLowerCase()
   )
 
@@ -197,47 +165,44 @@ export default function Launchpad() {
       </div>
 
       {/* Filter tabs */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 0 }}>
-        {FILTER_TABS.map(t => (
-          <button
-            key={t}
-            onClick={() => setFilter(t)}
-            style={{ height: 36, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: filter === t ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: filter === t ? '2px solid var(--accent)' : '2px solid transparent', background: 'transparent', border: 'none' }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
       {!FLAGS.PRESALE ? (
-        /* Phase 3 gate overlay on listing content */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, position: 'relative' }}>
-          <div style={{ filter: 'blur(3px)', pointerEvents: 'none', opacity: 0.4 }}>
-            {MOCK_LISTINGS.map(l => <ListingCard key={l.id} listing={l} />)}
-          </div>
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-strong)', borderRadius: 14, padding: '32px 40px', textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.5)' }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(160,81,252,0.12)', border: '1px solid rgba(160,81,252,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Launchpad opens in Phase 3</div>
-              <div style={{ fontSize: 13, color: 'var(--text-tertiary)', maxWidth: 320, lineHeight: 1.6 }}>
-                Presale mechanics go live with cross-chain USDC settlement. Complete Phase 1 testnet trading to qualify for early access.
-              </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 0' }}>
+          <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-strong)', borderRadius: 14, padding: '32px 40px', textAlign: 'center', boxShadow: '0 24px 80px rgba(0,0,0,0.5)', maxWidth: 420 }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(160,81,252,0.12)', border: '1px solid rgba(160,81,252,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: '#fff', marginBottom: 8 }}>Launchpad opens in Phase 3</div>
+            <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+              Presale mechanics go live with cross-chain USDC settlement. Complete Phase 1 testnet trading to qualify for early access.
             </div>
           </div>
         </div>
-      ) : displayed.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px 0', fontSize: 13, color: 'var(--text-tertiary)' }}>
-          No {filter.toLowerCase()} presales at this time.
-        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {displayed.map(l => <ListingCard key={l.id} listing={l} />)}
-        </div>
+        <>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 20, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 0 }}>
+            {FILTER_TABS.map(t => (
+              <button
+                key={t}
+                onClick={() => setFilter(t)}
+                style={{ height: 36, padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: filter === t ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: filter === t ? '2px solid var(--accent)' : '2px solid transparent', background: 'transparent', border: 'none' }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          {displayed.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 0', fontSize: 13, color: 'var(--text-tertiary)' }}>
+              No {filter.toLowerCase()} presales at this time.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {displayed.map(l => <ListingCard key={l.id} listing={l} />)}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

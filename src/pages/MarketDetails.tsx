@@ -14,21 +14,7 @@ const EXPLORE_SWATCHES = [
   'linear-gradient(135deg,#2EBD85,#1a7a55)',
 ]
 
-function SparkBars({ up }: { up: boolean }) {
-  const bars = Array.from({ length: 18 }, () => ({
-    h: `${Math.max(20, Math.random() * 100)}%`,
-  }))
-  return (
-    <div style={{ height: 52, padding: '0 14px', display: 'flex', alignItems: 'flex-end', gap: 2 }}>
-      {bars.map((b, i) => (
-        <span key={i} style={{ flex: 1, height: b.h, background: up ? '#2EBD85' : '#F6465D', borderRadius: 1, opacity: 0.7 }} />
-      ))}
-    </div>
-  )
-}
-
 function CollectionCard({ pair, swatch, onTrade, onDetail }: { pair: Pair; swatch: string; onTrade: () => void; onDetail: () => void }) {
-  const up = pair.change24h >= 0
   return (
     <div
       onClick={onDetail}
@@ -49,25 +35,24 @@ function CollectionCard({ pair, swatch, onTrade, onDetail }: { pair: Pair; swatc
           {pair.type === 'perp' ? 'PERP' : 'SPOT'}
         </span>
       </div>
-      <SparkBars up={up} />
       <div style={{ padding: '14px 18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Last Price</span>
-            <span style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: '#fff' }}>{fmt(pair.lastPrice)}</span>
+            <span style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: '#fff' }}>{pair.lastPrice > 0 ? fmt(pair.lastPrice) : '—'}</span>
           </div>
-          <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: up ? 'var(--up-500)' : 'var(--down-500)' }}>
-            {up ? '+' : ''}{pair.change24h.toFixed(2)}%
+          <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: pair.change24h > 0 ? 'var(--up-500)' : pair.change24h < 0 ? 'var(--down-500)' : 'var(--text-tertiary)' }}>
+            {pair.lastPrice > 0 ? `${pair.change24h >= 0 ? '+' : ''}${pair.change24h.toFixed(2)}%` : '—'}
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>24h Vol</span>
-            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>${(pair.volume24h / 1_000_000).toFixed(1)}M</span>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>{pair.volume24h > 0 ? `$${(pair.volume24h / 1_000_000).toFixed(1)}M` : '—'}</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Supply</span>
-            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>6,742</span>
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)' }}>—</span>
           </div>
           <button
             onClick={e => { e.stopPropagation(); onTrade() }}
@@ -95,11 +80,11 @@ export default function MarketDetails() {
       if (cancelled || !res.ok) return
       const built: Pair[] = await Promise.all(res.data.map(async m => {
         const ticker = await marketService.getTicker(m.id)
-        const lastPrice  = ticker.ok ? parseFloat(ticker.data.lastPrice)  : m.isPhase1 ? 2452 : 946
+        const lastPrice  = ticker.ok ? parseFloat(ticker.data.lastPrice)  : 0
         const change24h  = ticker.ok ? parseFloat(ticker.data.change24h)  : 0
         const volume24h  = ticker.ok ? parseFloat(ticker.data.volume24h)  : 0
-        const high24h    = ticker.ok ? parseFloat(ticker.data.high24h)    : lastPrice
-        const low24h     = ticker.ok ? parseFloat(ticker.data.low24h)     : lastPrice
+        const high24h    = ticker.ok ? parseFloat(ticker.data.high24h)    : 0
+        const low24h     = ticker.ok ? parseFloat(ticker.data.low24h)     : 0
         return { base: m.baseAsset, quote: m.quoteAsset, type: m.type, lastPrice, change24h, volume24h, high24h, low24h }
       }))
       if (!cancelled) setPairs(built)
@@ -123,9 +108,8 @@ export default function MarketDetails() {
         </div>
         <div style={{ display: 'flex', gap: 34 }}>
           {[
-            { label: '24h Volume',    value: '$98.4M' },
-            { label: 'Open Interest', value: '$21.5M' },
-            { label: 'Markets',       value: '4'      },
+            { label: '24h Volume',    value: pairs.length > 0 ? `$${(pairs.reduce((s, p) => s + p.volume24h, 0) / 1_000_000).toFixed(1)}M` : '—' },
+            { label: 'Markets',       value: pairs.length > 0 ? String(pairs.length) : '—' },
           ].map(s => (
             <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{s.label}</span>
@@ -222,7 +206,6 @@ export default function MarketDetails() {
 }
 
 function MarketRow({ pair, onTrade, onDetail }: { pair: Pair; onTrade: () => void; onDetail: () => void }) {
-  const up = pair.change24h >= 0
   const label = pair.type === 'spot' ? `${pair.base} / ${pair.quote}` : `${pair.base} - ${pair.quote}`
   return (
     <div
@@ -243,14 +226,14 @@ function MarketRow({ pair, onTrade, onDetail }: { pair: Pair; onTrade: () => voi
           </div>
         </div>
       </div>
-      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(pair.lastPrice)}</span>
-      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: up ? 'var(--up-500)' : 'var(--down-500)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        {up ? '+' : ''}{pair.change24h.toFixed(2)}%
+      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pair.lastPrice > 0 ? fmt(pair.lastPrice) : '—'}</span>
+      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: pair.change24h > 0 ? 'var(--up-500)' : pair.change24h < 0 ? 'var(--down-500)' : 'var(--text-tertiary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        {pair.lastPrice > 0 ? `${pair.change24h >= 0 ? '+' : ''}${pair.change24h.toFixed(2)}%` : '—'}
       </span>
-      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(pair.high24h)}</span>
-      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmt(pair.low24h)}</span>
+      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pair.high24h > 0 ? fmt(pair.high24h) : '—'}</span>
+      <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{pair.low24h > 0 ? fmt(pair.low24h) : '—'}</span>
       <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        ${(pair.volume24h / 1_000_000).toFixed(1)}M
+        {pair.volume24h > 0 ? `$${(pair.volume24h / 1_000_000).toFixed(1)}M` : '—'}
       </span>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button

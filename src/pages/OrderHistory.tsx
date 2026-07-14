@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
+import { authService } from '../services/authService'
 import { orderService, statusLabel } from '../services/orderService'
 import type { Order, OrderStatus } from '../types'
 
-const USER_ID = 'mock-user'
+function getSession() {
+  const s = authService.loadSession()
+  return { userId: s?.userId ?? '', token: s?.sessionToken ?? '' }
+}
 
 function fmt(n: number, dec = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -62,9 +66,10 @@ export default function OrderHistory() {
   const [loading,      setLoading]      = useState(true)
 
   useEffect(() => {
+    const { userId } = getSession()
     Promise.all([
-      orderService.getOpenOrders(USER_ID),
-      orderService.getOrderHistory(USER_ID),
+      orderService.getOpenOrders(userId),
+      orderService.getOrderHistory(userId),
     ]).then(([open, hist]) => {
       if (open.ok)  setOpenOrders(open.data)
       if (hist.ok)  setOrderHistory(hist.data)
@@ -73,7 +78,8 @@ export default function OrderHistory() {
   }, [])
 
   const handleCancel = async (orderId: string) => {
-    const res = await orderService.cancelOrder({ orderId, marketId: '' }, 'mock-session')
+    const { token } = getSession()
+    const res = await orderService.cancelOrder({ orderId, marketId: '' }, token)
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
   }
 

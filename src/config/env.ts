@@ -40,7 +40,7 @@ export const ENV = {
 
   // Product feature flags
   ENABLE_SPOT:        getBool('VITE_ENABLE_SPOT',        true),
-  ENABLE_PERPS:       getBool('VITE_ENABLE_PERPS',       true),
+  ENABLE_PERPS:       getBool('VITE_ENABLE_PERPS',       false),
   ENABLE_CROSS_CHAIN: getBool('VITE_ENABLE_CROSS_CHAIN', false),
   ENABLE_PRESALE:     getBool('VITE_ENABLE_PRESALE',     false),
   ENABLE_ADMIN:       getBool('VITE_ENABLE_ADMIN',        false),

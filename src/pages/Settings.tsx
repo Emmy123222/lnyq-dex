@@ -1,9 +1,9 @@
 import { useState } from 'react'
+import { authService } from '../services/authService'
 
 const RAIL_ITEMS = [
   { label: 'Profile',              danger: false },
   { label: 'Account & Security',   danger: false },
-  { label: 'API Keys',             danger: false },
   { label: 'Notifications',        danger: false },
   { label: 'Preferences',          danger: false },
   { label: 'Danger Zone',          danger: true  },
@@ -15,12 +15,6 @@ const NOTIF_ITEMS = [
   { label: 'Order Cancelled',      desc: 'When an order is cancelled.',            on: false },
   { label: 'Liquidation Warning',  desc: 'When margin ratio approaches limit.',    on: true  },
   { label: 'Funding Rate',         desc: 'Funding rate settlement notifications.', on: false },
-]
-
-const API_KEYS = [
-  { name: 'trading-bot',  perms: 'Read, Trade', created: '2026-06-01', used: '2026-07-05', status: 'Active'  },
-  { name: 'analytics',    perms: 'Read',         created: '2026-05-12', used: '2026-07-03', status: 'Active'  },
-  { name: 'old-script',   perms: 'Read, Trade', created: '2026-03-20', used: '2026-04-10', status: 'Revoked' },
 ]
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -39,9 +33,13 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 }
 
 export default function Settings() {
+  const session   = authService.loadSession()
+  const username  = session?.username ?? '—'
+  const userId    = session?.userId   ?? '—'
+
   const [section, setSection] = useState('Profile')
-  const [notifs, setNotifs] = useState(NOTIF_ITEMS.map(n => n.on))
-  const [twoFa, setTwoFa] = useState(false)
+  const [notifs,  setNotifs]  = useState(NOTIF_ITEMS.map(n => n.on))
+  const [twoFa,   setTwoFa]   = useState(false)
   const [confirmOrder, setConfirmOrder] = useState(true)
 
   return (
@@ -75,24 +73,21 @@ export default function Settings() {
           <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', display: 'block', marginBottom: 18 }}>Profile</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 22 }}>
             <span style={{ width: 64, height: 64, borderRadius: 12, background: 'linear-gradient(135deg,#A051FC,#531C97)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 900, color: '#fff', flexShrink: 0 }}>
-              TM
+              {username.slice(0, 2).toUpperCase()}
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button style={{ height: 30, padding: '0 12px', background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-                Change avatar
-              </button>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>PNG or JPG, max 2MB. Or use your initials.</span>
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Avatar customization coming soon.</span>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
             {[
-              { label: 'Username',     value: 'tunmise' },
-              { label: 'Display Name', value: 'Tunmise'  },
+              { label: 'Username', value: username },
+              { label: 'User ID',  value: userId   },
             ].map(f => (
               <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>{f.label}</span>
                 <div style={{ display: 'flex', alignItems: 'center', height: 40, padding: '0 12px', background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 6 }}>
-                  <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>{f.value}</span>
+                  <span style={{ fontSize: 13, color: 'var(--text-primary)', fontFamily: f.label === 'User ID' ? 'var(--font-mono)' : undefined, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.value}</span>
                 </div>
               </div>
             ))}
@@ -104,55 +99,24 @@ export default function Settings() {
           <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', display: 'block', marginBottom: 18 }}>Account &amp; Security</span>
           {[
             {
-              title: 'Email', sub: 'tunmise@lnyq.xyz',
-              right: <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(46,189,133,0.14)', color: 'var(--up-500)', border: '1px solid rgba(46,189,133,0.3)' }}>Verified</span>
+              title: 'Testnet Session', sub: session ? `Active · session loaded` : 'No active session',
+              right: (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: session ? 'rgba(46,189,133,0.14)' : 'rgba(255,255,255,0.06)', color: session ? 'var(--up-500)' : 'var(--text-tertiary)', border: `1px solid ${session ? 'rgba(46,189,133,0.3)' : 'rgba(255,255,255,0.1)'}` }}>
+                  {session ? 'Active' : 'Not signed in'}
+                </span>
+              ),
             },
             {
-              title: 'Embedded Wallet', sub: '0x7a1f…c3b2 · self-custodial',
-              right: <button style={{ height: 30, padding: '0 12px', background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Export</button>
-            },
-            {
-              title: 'Two-Factor Authentication', sub: 'Require a code on each new device.',
-              right: <Toggle on={twoFa} onChange={setTwoFa} />
+              title: 'Two-Factor Authentication', sub: 'Available in a future update.',
+              right: <Toggle on={twoFa} onChange={setTwoFa} />,
             },
           ].map((row, i, arr) => (
             <div key={row.title} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{row.title}</div>
-                <div style={{ fontSize: 12, fontFamily: row.title === 'Embedded Wallet' ? 'var(--font-mono)' : undefined, color: 'var(--text-tertiary)', marginTop: 2 }}>{row.sub}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>{row.sub}</div>
               </div>
               {row.right}
-            </div>
-          ))}
-        </div>
-
-        {/* API Keys */}
-        <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 22 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#fff' }}>API Keys</span>
-            <button style={{ height: 30, padding: '0 12px', background: 'var(--accent)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Create API Key</button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.2fr 1fr 1fr 0.9fr 0.7fr', padding: '8px 4px', borderBottom: '1px solid var(--border-subtle)' }}>
-            {['Name', 'Permissions', 'Created', 'Last Used', 'Status', ''].map((h, i) => (
-              <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>{h}</span>
-            ))}
-          </div>
-          {API_KEYS.map(k => (
-            <div key={k.name} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1.2fr 1fr 1fr 0.9fr 0.7fr', padding: '13px 4px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>{k.name}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{k.perms}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{k.created}</span>
-              <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{k.used}</span>
-              <span>
-                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: k.status === 'Active' ? 'rgba(46,189,133,0.14)' : 'rgba(255,255,255,0.06)', color: k.status === 'Active' ? 'var(--up-500)' : 'var(--text-tertiary)', border: `1px solid ${k.status === 'Active' ? 'rgba(46,189,133,0.3)' : 'rgba(255,255,255,0.1)'}` }}>
-                  {k.status}
-                </span>
-              </span>
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {k.status === 'Active' && (
-                  <button style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'var(--down-400)', background: 'rgba(246,70,93,0.12)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 4, cursor: 'pointer' }}>Revoke</button>
-                )}
-              </div>
             </div>
           ))}
         </div>
@@ -161,6 +125,7 @@ export default function Settings() {
         <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 22 }}>
           <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 22 }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', display: 'block', marginBottom: 8 }}>Notifications</span>
+            <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>Notification delivery is not yet connected. These preferences will be applied when the backend is configured.</div>
             {NOTIF_ITEMS.map((n, i) => (
               <div key={n.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 0', borderBottom: i < NOTIF_ITEMS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
                 <div>
@@ -185,7 +150,7 @@ export default function Settings() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>Default Order Size Unit</span>
               <select style={{ height: 38, padding: '0 12px', background: 'var(--surface-3)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' }}>
-                <option>NFTs</option>
+                <option>Collection tokens</option>
                 <option>USDC</option>
               </select>
             </div>
