@@ -87,7 +87,7 @@ export default function Rewards() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: 'var(--text-primary)' }}>Your Referral Link</span>
-                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Earn a share of every referred trader's taker fees, paid in USDC each epoch.</span>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Earn referral points for every trader you refer to the testnet.</span>
               </div>
               <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 4, background: 'var(--accent-tint)', border: '1px solid var(--accent)', color: 'var(--accent)', whiteSpace: 'nowrap' }}>{info.tierName.toUpperCase()}</span>
             </div>
@@ -176,8 +176,8 @@ export default function Rewards() {
             <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>How It Works</span>
             {[
               'Share your link. Anyone who signs up through it is bound to your code permanently.',
-              'Earn a share of their taker fees — scaling with your referred volume tier.',
-              'Claim rewards in USDC at the close of each 14-day epoch. No lockups.',
+              'Earn referral points for every trade they make on the testnet.',
+              'Points convert to rewards when the protocol team announces the distribution schedule.',
             ].map((text, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <span style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 6, background: 'var(--accent-tint)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 900 }}>{i + 1}</span>

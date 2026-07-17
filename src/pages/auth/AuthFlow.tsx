@@ -1,13 +1,14 @@
 /**
- * AuthFlow — access-code-gated onboarding.
+ * AuthFlow — access-code-gated onboarding + returning-user sign-in.
  *
- * Step order: email → verify → access-code → account-setup → initial-funding → welcome
+ * Signup flow:  landing → email → access-code → account-setup → initial-funding → welcome
+ * Login flow:   landing → email (login mode) → welcome-back → redirect
  *
- * All network calls go through authService / dripService — no hardcoded mock logic here.
- * In mock mode services simulate responses. In devnet mode they call real endpoints.
+ * No fake OTP step. Email verification backend endpoint is not yet available.
+ * All network calls go through authService / dripService — no mock logic here.
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { IconArrowRight, IconCheck } from '@tabler/icons-react'
 import Button from '../../components/ui/Button'
@@ -17,7 +18,7 @@ import { dripService } from '../../services/dripService'
 import { ENV } from '../../config/env'
 import type { AuthStep } from '../../types'
 
-// ── Logo ─────────────────────────────────────────────────────────────────────
+// ── Logo ──────────────────────────────────────────────────────────────────────
 
 function LogoMark({ size = 52 }: { size?: number }) {
   return (
@@ -30,14 +31,26 @@ function LogoMark({ size = 52 }: { size?: number }) {
   )
 }
 
-// ── Auth chrome ───────────────────────────────────────────────────────────────
+// ── Auth card shell ───────────────────────────────────────────────────────────
 
-function AuthCard({ children, step, showLogo }: { children: React.ReactNode; step: AuthStep; showLogo?: boolean }) {
-  const steps: AuthStep[] = ['email', 'verify', 'access-code', 'account-setup', 'initial-funding', 'welcome']
-  const current = steps.indexOf(step)
+type ExtendedStep = AuthStep | 'landing' | 'login-email' | 'welcome-back'
+
+const SIGNUP_STEPS: ExtendedStep[] = ['email', 'access-code', 'account-setup', 'initial-funding', 'welcome']
+
+function AuthCard({
+  children,
+  step,
+  showLogo,
+}: {
+  children: React.ReactNode
+  step: ExtendedStep
+  showLogo?: boolean
+}) {
+  const idx = SIGNUP_STEPS.indexOf(step)
+  const showDots = idx >= 0 && step !== 'welcome'
+
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-base)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 16px' }}>
-      {/* Testnet indicator */}
       <div style={{ marginBottom: 16, padding: '5px 14px', borderRadius: 999, background: 'rgba(46,189,133,0.1)', border: '1px solid rgba(46,189,133,0.3)', fontSize: 11, fontWeight: 700, color: '#2EBD85', letterSpacing: '0.08em' }}>
         ● {ENV.CHAIN.toUpperCase()} · TESTNET · {ENV.MODE.toUpperCase()}
       </div>
@@ -52,10 +65,19 @@ function AuthCard({ children, step, showLogo }: { children: React.ReactNode; ste
         {children}
       </div>
 
-      {step !== 'welcome' && (
-        <div className="flex items-center gap-1.5 mt-6">
-          {steps.filter(s => s !== 'welcome').map((s, i) => (
-            <div key={s} style={{ borderRadius: 999, width: i === current ? 16 : 8, height: 8, background: i <= current ? 'var(--accent)' : '#26262E', transition: 'all 150ms' }} />
+      {showDots && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 24 }}>
+          {SIGNUP_STEPS.filter(s => s !== 'welcome').map((s, i) => (
+            <div
+              key={s}
+              style={{
+                borderRadius: 999,
+                width: s === step ? 16 : 8,
+                height: 8,
+                background: i <= idx ? 'var(--accent)' : '#26262E',
+                transition: 'all 150ms',
+              }}
+            />
           ))}
         </div>
       )}
@@ -63,9 +85,46 @@ function AuthCard({ children, step, showLogo }: { children: React.ReactNode; ste
   )
 }
 
-// ── Steps ─────────────────────────────────────────────────────────────────────
+// ── Landing screen ─────────────────────────────────────────────────────────────
 
-function EmailStep({ onNext }: { onNext: (email: string) => void }) {
+function LandingStep({
+  onSignup,
+  onLogin,
+}: {
+  onSignup: () => void
+  onLogin: () => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-secondary)', textAlign: 'center', margin: 0 }}>
+        The order book for onchain NFT markets.<br />Real price discovery. Transparent liquidity.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Button variant="primary" size="lg" fullWidth onClick={onSignup}>
+          Sign up with access code <IconArrowRight size={16} />
+        </Button>
+        <Button variant="ghost" size="lg" fullWidth onClick={onLogin}>
+          Sign in to existing account
+        </Button>
+      </div>
+
+      <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', margin: 0 }}>
+        By continuing you agree to the Terms &amp; Privacy Policy.
+      </p>
+    </div>
+  )
+}
+
+// ── Login email step ───────────────────────────────────────────────────────────
+
+function LoginEmailStep({
+  onSuccess,
+  onBack,
+}: {
+  onSuccess: (data: { userId: string; email: string; username: string; referralCode: string; sessionToken: string }) => void
+  onBack: () => void
+}) {
   const [email,   setEmail]   = useState('')
   const [error,   setError]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -75,64 +134,130 @@ function EmailStep({ onNext }: { onNext: (email: string) => void }) {
   const submit = async () => {
     if (!valid) { setError('Enter a valid email address'); return }
     setLoading(true)
-    // TODO: call POST /auth/email/send-otp when backend provides it
-    await new Promise(r => setTimeout(r, 600))
+    setError('')
+    const res = await authService.login(email)
     setLoading(false)
+    if (!res.ok) {
+      setError(
+        res.error.code === 'NO_ACCOUNT'
+          ? 'No account found for this email. Sign up with an access code.'
+          : res.error.message,
+      )
+      return
+    }
+    onSuccess({
+      userId:       res.data.userId,
+      email:        res.data.email,
+      username:     res.data.username,
+      referralCode: res.data.referralCode,
+      sessionToken: res.data.sessionToken,
+    })
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Sign in</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Enter your testnet account email</p>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Input
+          label="Email"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={e => { setEmail(e.target.value); setError('') }}
+          error={error}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          autoFocus
+        />
+        <Button variant="primary" size="lg" fullWidth loading={loading} onClick={submit} disabled={!email}>
+          Continue <IconArrowRight size={16} />
+        </Button>
+        <button
+          onClick={onBack}
+          style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          Back
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Welcome back screen ────────────────────────────────────────────────────────
+
+function WelcomeBackStep({ username, onDone }: { username: string; onDone: () => void }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, textAlign: 'center' }}>
+      <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(46,189,133,0.14)', border: '1px solid #2EBD85', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <IconCheck size={30} color="#2EBD85" strokeWidth={2.5} />
+      </div>
+      <div>
+        <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 8 }}>Welcome back, {username}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Your session has been restored.</div>
+      </div>
+      <Button variant="primary" size="lg" fullWidth onClick={onDone}>Go to Markets</Button>
+    </div>
+  )
+}
+
+// ── Signup steps ───────────────────────────────────────────────────────────────
+
+function EmailStep({ onNext, onBack }: { onNext: (email: string) => void; onBack: () => void }) {
+  const [email, setEmail] = useState('')
+  const [error, setError] = useState('')
+
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+
+  const submit = () => {
+    if (!valid) { setError('Enter a valid email address'); return }
     onNext(email)
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 36 }}>
-      <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)', textAlign: 'center' }}>
-        The order book for onchain NFT markets. Real price discovery. Transparent liquidity.
-      </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Input label="Email" type="email" placeholder="you@example.com" value={email} onChange={e => { setEmail(e.target.value); setError('') }} error={error} onKeyDown={e => e.key === 'Enter' && submit()} autoFocus />
-        <Button variant="primary" size="lg" fullWidth loading={loading} onClick={submit} disabled={!email}>Continue</Button>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Create account</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Enter your email to get started</p>
       </div>
-      <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Input
+          label="Email"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={e => { setEmail(e.target.value); setError('') }}
+          error={error}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          autoFocus
+        />
+        <Button variant="primary" size="lg" fullWidth onClick={submit} disabled={!email}>
+          Continue <IconArrowRight size={16} />
+        </Button>
+        <button
+          onClick={onBack}
+          style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          Back
+        </button>
+      </div>
+      <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', margin: 0 }}>
         By continuing you agree to the Terms &amp; Privacy Policy.
       </p>
     </div>
   )
 }
 
-function VerifyStep({ email, onNext }: { email: string; onNext: () => void }) {
-  const [code,    setCode]    = useState('')
-  const [error,   setError]   = useState('')
-  const [loading, setLoading] = useState(false)
-  const [resent,  setResent]  = useState(false)
-
-  const submit = async () => {
-    if (code.length < 6) { setError('Enter the 6-digit code from your email'); return }
-    setLoading(true)
-    // TODO: call POST /auth/email/verify-otp when backend provides it
-    await new Promise(r => setTimeout(r, 600))
-    setLoading(false)
-    onNext()
-  }
-
-  const resend = () => { setResent(true); setTimeout(() => setResent(false), 3000) }
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">Verify your email</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">We sent a 6-digit code to <span className="text-[var(--text-primary)] font-bold">{email}</span></p>
-      </div>
-      <div className="flex flex-col gap-4">
-        <Input label="Verification code" type="text" inputMode="numeric" placeholder="000000" maxLength={6} value={code} onChange={e => { setCode(e.target.value.replace(/\D/g, '')); setError('') }} error={error} onKeyDown={e => e.key === 'Enter' && submit()} autoFocus className="tracking-[0.3em] text-center text-lg font-mono" />
-        <Button variant="primary" size="lg" fullWidth loading={loading} onClick={submit} disabled={code.length < 6}>Verify email</Button>
-      </div>
-      <p className="text-xs text-[var(--text-tertiary)] text-center">
-        Didn't receive it?{' '}
-        <button onClick={resend} className="text-[var(--text-accent)] hover:underline">{resent ? 'Sent!' : 'Resend code'}</button>
-      </p>
-    </div>
-  )
-}
-
-function AccessCodeStep({ email, onNext }: { email: string; onNext: (token: string) => void }) {
+function AccessCodeStep({
+  email,
+  onNext,
+  onBack,
+}: {
+  email: string
+  onNext: (token: string) => void
+  onBack: () => void
+}) {
   const [code,    setCode]    = useState('')
   const [error,   setError]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -143,53 +268,73 @@ function AccessCodeStep({ email, onNext }: { email: string; onNext: (token: stri
     if (!validateAccessCodeFormat(trimmed)) { setError('Invalid format — check your access code'); return }
 
     setLoading(true)
+    setError('')
     const res = await authService.verifyAccessCode({ code: trimmed, email })
     setLoading(false)
 
     if (!res.ok) { setError(res.error.message); return }
 
     switch (res.data.status) {
-      case 'VALID':
-        onNext(res.data.sessionToken ?? '')
-        break
-      case 'ALREADY_USED':
-        setError('This access code has already been used. Each code is one-time use.')
-        break
-      case 'EXPIRED':
-        setError('This access code has expired. Please request a new one.')
-        break
-      case 'INVALID':
-        setError('Access code not recognised. Check for typos and try again.')
-        break
+      case 'VALID':        onNext(res.data.sessionToken ?? ''); break
+      case 'ALREADY_USED': setError('This access code has already been used.'); break
+      case 'EXPIRED':      setError('This access code has expired.'); break
+      default:             setError('Access code not recognised. Check for typos.')
     }
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">Enter access code</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">LNYQ is in private testnet access. An invitation code is required.</p>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Enter access code</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>LNYQ is in private testnet. An invitation code is required.</p>
       </div>
-      <div className="flex flex-col gap-4">
-        <Input label="Access code" type="text" placeholder="XXXX-XXXX-XXXX" value={code} onChange={e => { setCode(e.target.value.toUpperCase()); setError('') }} error={error} onKeyDown={e => e.key === 'Enter' && submit()} autoFocus className="font-mono tracking-wide" />
-        <p className="text-xs text-[var(--text-tertiary)]">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Input
+          label="Access code"
+          type="text"
+          placeholder="XXXX-XXXX-XXXX"
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setError('') }}
+          error={error}
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          autoFocus
+          // @ts-ignore — className forwarded by Input component
+          className="font-mono tracking-wide"
+        />
+        {ENV.IS_LOCAL_API && (
+          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0 }}>
+            Local dev code: <code style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)' }}>LNYQ-TESTNET-0001</code>
+          </p>
+        )}
+        <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0 }}>
           Don't have a code?{' '}
-          <a href="#" className="text-[var(--text-accent)] hover:underline">Request testnet access</a>
+          <a href="#" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Request testnet access</a>
         </p>
         <Button variant="primary" size="lg" fullWidth loading={loading} onClick={submit} disabled={!code.trim()}>
           Continue <IconArrowRight size={16} />
         </Button>
+        <button
+          onClick={onBack}
+          style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          Back
+        </button>
       </div>
-      {ENV.IS_LOCAL_API && (
-        <p className="text-xs text-[var(--text-tertiary)] text-center">
-          Test code: <code style={{ fontFamily: 'var(--font-mono)' }}>LNYQ-TESTNET-0001</code>
-        </p>
-      )}
     </div>
   )
 }
 
-function AccountSetupStep({ email, accessCodeToken, onNext }: { email: string; accessCodeToken: string; onNext: (username: string, referralCode: string, sessionToken: string) => void }) {
+function AccountSetupStep({
+  email,
+  accessCodeToken,
+  onNext,
+  onBack,
+}: {
+  email: string
+  accessCodeToken: string
+  onNext: (username: string, referralCode: string, sessionToken: string, userId: string) => void
+  onBack: () => void
+}) {
   const [username, setUsername] = useState('')
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
@@ -199,34 +344,57 @@ function AccountSetupStep({ email, accessCodeToken, onNext }: { email: string; a
   const submit = async () => {
     if (!valid) { setError('3-20 characters, letters, numbers and underscores only'); return }
     setLoading(true)
+    setError('')
     const res = await authService.signup({ email, username, accessCodeToken })
     setLoading(false)
     if (!res.ok) { setError(res.error.message); return }
-    onNext(username, res.data.referralCode, res.data.sessionToken)
+    onNext(username, res.data.referralCode, res.data.sessionToken, res.data.userId)
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">Set up your account</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">Choose a username visible on the leaderboard</p>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Set up your account</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Choose a username visible on the leaderboard</p>
       </div>
-      <div className="flex flex-col gap-4">
-        <Input label="Username" type="text" placeholder="trader_alpha" value={username} onChange={e => { setUsername(e.target.value); setError('') }} error={error} hint="3-20 characters. Letters, numbers, underscores." onKeyDown={e => e.key === 'Enter' && submit()} autoFocus />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Input
+          label="Username"
+          type="text"
+          placeholder="trader_alpha"
+          value={username}
+          onChange={e => { setUsername(e.target.value); setError('') }}
+          error={error}
+          hint="3-20 characters. Letters, numbers, underscores."
+          onKeyDown={e => e.key === 'Enter' && submit()}
+          autoFocus
+        />
         {username && !error && valid && (
-          <div className="flex items-center gap-2 text-xs text-[var(--buy)]">
-            <IconCheck size={14} /> Username available
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--up-500)' }}>
+            <IconCheck size={14} /> Available
           </div>
         )}
         <Button variant="primary" size="lg" fullWidth loading={loading} onClick={submit} disabled={!username}>
           Continue <IconArrowRight size={16} />
         </Button>
+        <button
+          onClick={onBack}
+          style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          Back
+        </button>
       </div>
     </div>
   )
 }
 
-function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; onNext: (claimed: boolean, amount?: string) => void }) {
+function InitialFundingStep({
+  sessionToken,
+  onNext,
+}: {
+  sessionToken: string
+  onNext: (claimed: boolean, amount?: string) => void
+}) {
   const [loading, setLoading] = useState(false)
   const [claimed, setClaimed] = useState(false)
   const [error,   setError]   = useState('')
@@ -236,48 +404,65 @@ function InitialFundingStep({ sessionToken, onNext }: { sessionToken: string; on
     setError('')
     const res = await dripService.claim(sessionToken)
     setLoading(false)
-    if (!res.ok) { setError(res.error.message); return }
-    if (res.data.success) { setClaimed(true); setTimeout(() => onNext(true, res.data.amount), 1200) }
-    else { setError(res.data.message ?? 'Claim failed — please try again.') }
+    if (!res.ok) {
+      setError(res.error.message)
+      return
+    }
+    if (res.data.success) {
+      setClaimed(true)
+      setTimeout(() => onNext(true, res.data.amount), 1200)
+    } else {
+      setError(res.data.message ?? 'Claim failed — please try again.')
+    }
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
-        <h1 className="text-xl font-bold text-[var(--text-primary)]">Fund your account</h1>
-        <p className="text-sm text-[var(--text-secondary)] mt-1">Claim 1,000 testnet USDC to start trading</p>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Fund your account</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Claim 1,000 testnet USDC to start trading</p>
       </div>
 
-      <div className="rounded-[var(--radius-lg)] bg-[var(--accent-tint)] border border-[var(--border-accent)] p-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-xs font-bold uppercase tracking-widest text-[var(--text-accent)]">Testnet allocation</span>
-          <span className="text-xs text-[var(--text-tertiary)]">One-time · no real value</span>
+      <div style={{ borderRadius: 10, background: 'var(--accent-tint)', border: '1px solid var(--border-accent)', padding: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)' }}>Testnet allocation</span>
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>One-time · no real value</span>
         </div>
-        <div className="text-3xl font-black text-[var(--text-primary)]">1,000 USDC</div>
-        <p className="text-xs text-[var(--text-secondary)] mt-1">
+        <div style={{ fontSize: 30, fontWeight: 900, color: '#fff' }}>1,000 USDC</div>
+        <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '6px 0 0' }}>
           {claimed ? '✓ Credited to your account' : 'Automatically credited on claim'}
         </p>
       </div>
 
-      {error && (
-        <p style={{ fontSize: 12, color: 'var(--down-500)', fontWeight: 700 }}>{error}</p>
-      )}
+      {error && <p style={{ fontSize: 12, color: 'var(--down-500)', fontWeight: 700, margin: 0 }}>{error}</p>}
 
-      <div className="flex flex-col gap-3">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <Button variant="primary" size="lg" fullWidth loading={loading} onClick={claim} disabled={claimed}>
           {claimed ? '✓ Claimed!' : 'Claim testnet USDC'}
         </Button>
-        <Button variant="ghost" size="lg" fullWidth onClick={() => onNext(false)}>Skip for now</Button>
+        <Button variant="ghost" size="lg" fullWidth onClick={() => onNext(false)}>
+          Skip for now
+        </Button>
       </div>
 
-      <p className="text-xs text-[var(--text-tertiary)] text-center">
+      <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', margin: 0 }}>
         Testnet USDC has no real value and is for testing purposes only.
       </p>
     </div>
   )
 }
 
-function WelcomeStep({ username, referralCode, claimedAmount, onDone }: { username: string; referralCode: string; claimedAmount?: string; onDone: () => void }) {
+function WelcomeStep({
+  username,
+  referralCode,
+  claimedAmount,
+  onDone,
+}: {
+  username: string
+  referralCode: string
+  claimedAmount?: string
+  onDone: () => void
+}) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, textAlign: 'center' }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(46,189,133,0.14)', border: '1px solid #2EBD85', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -287,17 +472,19 @@ function WelcomeStep({ username, referralCode, claimedAmount, onDone }: { userna
         <div style={{ fontSize: 24, fontWeight: 900, color: '#fff', marginBottom: 10 }}>Welcome to LNYQ</div>
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Your testnet account is ready. Start trading.</div>
       </div>
-      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 4 }}>
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {[
-          { label: 'Balance',       value: claimedAmount ? `${parseFloat(claimedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : 'Pending', mono: true },
+          { label: 'Balance',       value: claimedAmount ? `${parseFloat(claimedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : '1,000.00 USDC', mono: true },
           { label: 'Username',      value: username },
           { label: 'Referral Code', value: referralCode, mono: true },
-          { label: 'Network',       value: ENV.CHAIN, small: true },
+          { label: 'Network',       value: ENV.CHAIN },
           { label: 'Status',        value: 'Verified', green: true },
         ].map(r => (
-          <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
+          <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
             <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{r.label}</span>
-            <span style={{ fontSize: (r as any).small ? 12 : 14, fontWeight: (r as any).mono ? 700 : 700, fontFamily: (r as any).mono ? 'var(--font-mono)' : undefined, color: (r as any).green ? 'var(--up-500)' : '#fff', fontVariantNumeric: 'tabular-nums' }}>{r.value}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: (r as any).mono ? 'var(--font-mono)' : undefined, color: (r as any).green ? 'var(--up-500)' : '#fff', fontVariantNumeric: 'tabular-nums' }}>
+              {r.value}
+            </span>
           </div>
         ))}
       </div>
@@ -310,39 +497,120 @@ function WelcomeStep({ username, referralCode, claimedAmount, onDone }: { userna
 
 export default function AuthFlow() {
   const navigate = useNavigate()
-  const [step,             setStep]            = useState<AuthStep>('email')
-  const [email,            setEmail]           = useState('')
+  const [step,             setStep]           = useState<ExtendedStep>('landing')
+  const [email,            setEmail]          = useState('')
   const [accessCodeToken,  setAccessCodeToken] = useState('')
-  const [username,         setUsername]        = useState('trader')
-  const [referralCode,     setReferralCode]    = useState('')
-  const [sessionToken,     setSessionToken]    = useState('')
-  const [claimedAmount,    setClaimedAmount]   = useState<string | undefined>()
+  const [username,         setUsername]       = useState('')
+  const [referralCode,     setReferralCode]   = useState('')
+  const [sessionToken,     setSessionToken]   = useState('')
+  const [claimedAmount,    setClaimedAmount]  = useState<string | undefined>()
+
+  // If already logged in, skip auth entirely
+  useEffect(() => {
+    const session = authService.loadSession()
+    if (session?.sessionToken && session?.userId) {
+      navigate('/trade', { replace: true })
+    }
+  }, []) // eslint-disable-line
+
+  const saveAndRedirect = (data: {
+    userId: string; email: string; username: string; referralCode: string; sessionToken: string
+  }) => {
+    authService.saveSession({
+      userId:          data.userId,
+      username:        data.username,
+      email:           data.email,
+      referralCode:    data.referralCode,
+      sessionToken:    data.sessionToken,
+      isAuthenticated: true,
+    })
+  }
 
   const renderStep = () => {
     switch (step) {
+      case 'landing':
+        return (
+          <LandingStep
+            onSignup={() => setStep('email')}
+            onLogin={()  => setStep('login-email')}
+          />
+        )
+
+      case 'login-email':
+        return (
+          <LoginEmailStep
+            onBack={() => setStep('landing')}
+            onSuccess={data => {
+              saveAndRedirect(data)
+              setUsername(data.username)
+              setStep('welcome-back')
+            }}
+          />
+        )
+
+      case 'welcome-back':
+        return (
+          <WelcomeBackStep
+            username={username}
+            onDone={() => navigate('/trade', { replace: true })}
+          />
+        )
+
       case 'email':
-        return <EmailStep onNext={e => { setEmail(e); setStep('verify') }} />
-      case 'verify':
-        return <VerifyStep email={email} onNext={() => setStep('access-code')} />
+        return (
+          <EmailStep
+            onNext={e => { setEmail(e); setStep('access-code') }}
+            onBack={() => setStep('landing')}
+          />
+        )
+
       case 'access-code':
-        return <AccessCodeStep email={email} onNext={token => { setAccessCodeToken(token); setStep('account-setup') }} />
+        return (
+          <AccessCodeStep
+            email={email}
+            onNext={token => { setAccessCodeToken(token); setStep('account-setup') }}
+            onBack={() => setStep('email')}
+          />
+        )
+
       case 'account-setup':
         return (
           <AccountSetupStep
             email={email}
             accessCodeToken={accessCodeToken}
-            onNext={(u, ref, sess) => { setUsername(u); setReferralCode(ref); setSessionToken(sess); setStep('initial-funding') }}
+            onNext={(u, ref, sess, uid) => {
+              setUsername(u)
+              setReferralCode(ref)
+              setSessionToken(sess)
+              saveAndRedirect({ userId: uid, email, username: u, referralCode: ref, sessionToken: sess })
+              setStep('initial-funding')
+            }}
+            onBack={() => setStep('access-code')}
           />
         )
+
       case 'initial-funding':
-        return <InitialFundingStep sessionToken={sessionToken} onNext={(_, amount) => { setClaimedAmount(amount); setStep('welcome') }} />
+        return (
+          <InitialFundingStep
+            sessionToken={sessionToken}
+            onNext={(_, amount) => { setClaimedAmount(amount); setStep('welcome') }}
+          />
+        )
+
       case 'welcome':
-        return <WelcomeStep username={username} referralCode={referralCode} claimedAmount={claimedAmount} onDone={() => navigate('/markets')} />
+        return (
+          <WelcomeStep
+            username={username}
+            referralCode={referralCode}
+            claimedAmount={claimedAmount}
+            onDone={() => navigate('/trade', { replace: true })}
+          />
+        )
     }
   }
 
   return (
-    <AuthCard step={step} showLogo={step === 'email'}>
+    <AuthCard step={step} showLogo={step === 'landing'}>
       {renderStep()}
     </AuthCard>
   )

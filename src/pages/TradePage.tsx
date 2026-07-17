@@ -140,11 +140,11 @@ function HistoryRow({ order }: { order: Order }) {
   )
 }
 
-const POS_TABS = ['Positions', 'Open Orders', 'Order History'] as const
-type PosTab = typeof POS_TABS[number]
+const ALL_POS_TABS = ['Positions', 'Open Orders', 'Order History'] as const
+type PosTab = typeof ALL_POS_TABS[number]
 
 function PositionsPanel({ market }: { market: Market | null }) {
-  const [tab,          setTab]         = useState<PosTab>('Positions')
+  const [tab,          setTab]         = useState<PosTab>(FLAGS.PERPS ? 'Positions' : 'Open Orders')
   const [positions,    setPositions]   = useState<PerpPosition[]>([])
   const [openOrders,   setOpenOrders]  = useState<Order[]>([])
   const [orderHistory, setOrderHistory] = useState<Order[]>([])
@@ -183,7 +183,7 @@ function PositionsPanel({ market }: { market: Market | null }) {
   return (
     <>
       <div style={{ flexShrink: 0, borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', height: 42, padding: '0 4px', gap: 0 }}>
-        {POS_TABS.map(t => (
+        {ALL_POS_TABS.filter(t => t !== 'Positions' || FLAGS.PERPS).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ height: '100%', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: tab === t ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', background: 'transparent', border: 'none' }}>
             {t}
           </button>
@@ -262,17 +262,21 @@ export default function TradePage() {
         ?? res.data[0]
       if (first) setActiveMarket(first)
     })
+  }, [])
+
+  // Reload balances when session starts and when active market changes (base asset varies)
+  useEffect(() => {
     const { userId } = getSession()
-    portfolioService.getStats(userId).then(res => {
-      if (res.ok) setAvailableUsdc(parseFloat(res.data.availableBalance))
-    })
-    portfolioService.getPositions(userId).then(res => {
-      if (res.ok) {
-        const lnyq = res.data.find(p => p.marketId.includes('LNYQNFT'))
-        if (lnyq) setAvailableBase(parseInt(lnyq.quantity))
+    portfolioService.getBalances(userId).then(res => {
+      if (!res.ok) return
+      const usdcBal = res.data.find(b => b.asset === 'USDC')
+      if (usdcBal) setAvailableUsdc(parseFloat(usdcBal.available))
+      if (activeMarket) {
+        const baseBal = res.data.find(b => b.asset === activeMarket.baseAsset)
+        setAvailableBase(baseBal ? parseInt(baseBal.available) : 0)
       }
     })
-  }, [])
+  }, [activeMarket])
 
   // Load ticker for active market
   useEffect(() => {
@@ -302,12 +306,12 @@ export default function TradePage() {
   }, [activeMarket])
 
   const pair = activeMarket ? marketToPair(activeMarket) : {
-    base: 'LNYQNFT', quote: 'USDC', type: 'spot' as const,
+    base: '', quote: 'USDC', type: 'spot' as const,
     lastPrice: 0, change24h: 0, volume24h: 0, high24h: 0, low24h: 0,
   }
 
   const isPerp  = activeMarket?.type === 'perp'
-  const marketId = activeMarket?.id ?? 'LNYQNFT-USDC-SPOT'
+  const marketId = activeMarket?.id ?? ''
 
   const spotMarkets = markets.filter(m => m.type === 'spot')
   const perpMarkets = markets.filter(m => m.type === 'perp')
@@ -318,6 +322,15 @@ export default function TradePage() {
     { id: 'trades', label: 'Trades' },
     { id: 'order',  label: 'Order' },
   ]
+
+  if (markets.length === 0 && !activeMarket) {
+    return (
+      <div style={{ height: 'calc(100vh - var(--topbar-h))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>No active markets yet</span>
+        <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Spot markets will appear here once the protocol team lists them.</span>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - var(--topbar-h))' }}>
@@ -366,7 +379,7 @@ export default function TradePage() {
       <div className="hidden lg:flex flex-1 min-h-0 gap-3 p-3 overflow-hidden">
         <div className="flex flex-col gap-3 flex-1 min-h-0 min-w-0">
           <div style={{ height: 466, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <PriceChart pair={pair} />
+            <PriceChart marketId={marketId} />
           </div>
           <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <PositionsPanel market={activeMarket} />
@@ -377,20 +390,21 @@ export default function TradePage() {
           <div style={{ height: 582, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
             <div style={{ height: 40, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', borderBottom: '1px solid var(--border-subtle)' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Order Book</span>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>NFTs</span>
+              {activeMarket && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{activeMarket.baseAsset}</span>}
             </div>
             <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
               <OrderBook marketId={marketId} onPriceClick={setClickedPrice} />
             </div>
           </div>
           <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <RecentTrades marketId={marketId} />
+            <RecentTrades marketId={marketId} baseSymbol={activeMarket?.baseAsset} />
           </div>
         </div>
 
         <div style={{ width: 312, flexShrink: 0, minHeight: 0, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
             <OrderEntry
+              marketId={marketId}
               isPerp={isPerp}
               prefillPrice={clickedPrice}
               pair={pair}
@@ -411,10 +425,10 @@ export default function TradePage() {
           ))}
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          {mobileTab === 'chart'  && <div className="h-full" style={{ background: 'var(--surface-1)' }}><PriceChart pair={pair} /></div>}
+          {mobileTab === 'chart'  && <div className="h-full" style={{ background: 'var(--surface-1)' }}><PriceChart marketId={marketId} /></div>}
           {mobileTab === 'book'   && <OrderBook marketId={marketId} onPriceClick={p => { setClickedPrice(p); setMobileTab('order') }} />}
-          {mobileTab === 'trades' && <RecentTrades marketId={marketId} />}
-          {mobileTab === 'order'  && <div className="overflow-y-auto h-full"><OrderEntry isPerp={isPerp} prefillPrice={clickedPrice} pair={pair} availableUsdc={availableUsdc} availableBase={availableBase} /></div>}
+          {mobileTab === 'trades' && <RecentTrades marketId={marketId} baseSymbol={activeMarket?.baseAsset} />}
+          {mobileTab === 'order'  && <div className="overflow-y-auto h-full"><OrderEntry marketId={marketId} isPerp={isPerp} prefillPrice={clickedPrice} pair={pair} availableUsdc={availableUsdc} availableBase={availableBase} /></div>}
         </div>
       </div>
 

@@ -1,12 +1,13 @@
 /**
- * OrderEntry — spot and perp order form.
+ * OrderEntry — spot order form (Phase 1).
  *
  * Phase 2: leverage controls (1x–5x), liquidation price preview,
  * perp-specific fees (PERP_TAKER/MAKER_FEE_BPS).
  * Phase 3: cross-chain available from parent deposit modal.
  *
  * Fees come from config/fees.ts — never hardcoded here.
- * Liquidation price is DISPLAY ONLY — not used for settlement.
+ * All order-critical values (price, quantity, expiresAt) are submitted
+ * as strings or ISO strings — no parseFloat/parseInt on submission paths.
  */
 
 import { useState, useEffect } from 'react'
@@ -25,6 +26,7 @@ const TIF_OPTIONS: TimeInForce[] = ['GTC', 'IOC', 'FOK', 'GTD']
 const LEVERAGE_MARKS = [1, 2, 3, 4, 5]
 
 interface OrderEntryProps {
+  marketId: string
   isPerp?: boolean
   prefillPrice?: number
   pair: Pair
@@ -129,6 +131,7 @@ function LeverageSlider({ value, onChange }: { value: number; onChange: (v: numb
 }
 
 export default function OrderEntry({
+  marketId,
   isPerp = false,
   prefillPrice,
   pair,
@@ -138,35 +141,33 @@ export default function OrderEntry({
   userId: _userId = '',
 }: OrderEntryProps) {
   const { toast } = useToast()
-  const [side,     setSide]     = useState<OrderSide>('buy')
-  const [type,     setType]     = useState<OrderType>('limit')
-  const [price,    setPrice]    = useState(prefillPrice?.toFixed(2) ?? '')
-  const [quantity, setQuantity] = useState('')
-  const [tif,      setTif]      = useState<TimeInForce>('GTC')
-  const [slippage, setSlippage] = useState('1%')
-  const [leverage, setLeverage] = useState(1)
-  const [loading,  setLoading]  = useState(false)
+  const [side,       setSide]       = useState<OrderSide>('buy')
+  const [type,       setType]       = useState<OrderType>('limit')
+  const [price,      setPrice]      = useState(prefillPrice?.toFixed(2) ?? '')
+  const [quantity,   setQuantity]   = useState('')
+  const [tif,        setTif]        = useState<TimeInForce>('GTC')
+  const [gtdExpiry,  setGtdExpiry]  = useState('')
+  const [slippage,   setSlippage]   = useState('1%')
+  const [leverage,   setLeverage]   = useState(1)
+  const [loading,    setLoading]    = useState(false)
 
-  // Whether perp controls are fully unlocked
   const perpEnabled = isPerp && FLAGS.PERPS
 
   useEffect(() => {
     if (prefillPrice !== undefined) setPrice(prefillPrice.toFixed(2))
   }, [prefillPrice])
 
-  // Reset leverage to 1 when switching to spot
   useEffect(() => {
     if (!isPerp) setLeverage(1)
   }, [isPerp])
 
-  const priceNum = parseFloat(price)  || 0
-  const qtyNum   = parseInt(quantity) || 0
-  const notional = priceNum * qtyNum
+  // For display/preview computation only — not sent to backend as-is
+  const priceNum    = Number(price)    || 0
+  const qtyNum      = Number(quantity) || 0
+  const notional    = priceNum * qtyNum
 
-  // Perp: margin deposited = notional / leverage. Spot: full notional.
   const marginRequired = perpEnabled ? notional / leverage : notional
 
-  // Fee schedule: perp has higher fees (1%/0.5%) vs spot (0.25%/0.05%)
   const takerBps = perpEnabled ? PERP_TAKER_FEE_BPS : TAKER_FEE_BPS
   const makerBps = perpEnabled ? PERP_MAKER_FEE_BPS : MAKER_FEE_BPS
   const feeBps   = type === 'market' ? takerBps : makerBps
@@ -174,7 +175,6 @@ export default function OrderEntry({
   const feeLabel = bpsToPercent(feeBps)
   const feeType  = type === 'market' ? 'taker' : 'maker'
 
-  // Liquidation price (display only, not for settlement)
   const liqPrice = perpEnabled && priceNum > 0
     ? calcLiquidationPrice(side, priceNum, leverage)
     : 0
@@ -184,17 +184,26 @@ export default function OrderEntry({
     ? `${qtyNum || 0} ${pair.base}`
     : `${fmt(notional - estFee)} USDC`
 
-  // Balance check differs for perp (check margin, not notional)
   const hasSufficientBalance = side === 'buy'
     ? availableUsdc >= marginRequired
     : availableBase >= qtyNum
 
-  const canSubmit = qtyNum > 0 && (type === 'market' || priceNum > 0) && hasSufficientBalance && !loading
+  const gtdValid = tif !== 'GTD' || (gtdExpiry !== '' && new Date(gtdExpiry) > new Date())
+
+  const canSubmit = qtyNum > 0
+    && (type === 'market' || priceNum > 0)
+    && hasSufficientBalance
+    && gtdValid
+    && !loading
+    && !!marketId
 
   const submit = async () => {
-    if (qtyNum <= 0) { toast('error', 'Quantity required', 'Enter a whole number of NFTs'); return }
-    if (!/^\d+$/.test(quantity)) { toast('error', 'Whole number only', 'NFT quantity must be a whole number'); return }
+    if (!marketId) { toast('error', 'No market', 'No active market selected'); return }
+    if (qtyNum <= 0) { toast('error', 'Quantity required', 'Enter a quantity'); return }
+    if (!/^\d+$/.test(quantity)) { toast('error', 'Whole number only', 'Quantity must be a whole number'); return }
     if (type === 'limit' && priceNum <= 0) { toast('error', 'Price required', 'Enter a limit price'); return }
+    if (tif === 'GTD' && !gtdExpiry) { toast('error', 'Expiry required', 'Set a GTD expiration date and time'); return }
+    if (tif === 'GTD' && new Date(gtdExpiry) <= new Date()) { toast('error', 'Expiry in past', 'GTD expiration must be in the future'); return }
     if (!hasSufficientBalance) {
       const need = side === 'buy'
         ? `Need ${fmt(marginRequired)} USDC${perpEnabled ? ' margin' : ''}`
@@ -203,16 +212,21 @@ export default function OrderEntry({
       return
     }
 
+    // Slippage: strip the % suffix and convert to basis points
+    const slippageBps = Math.round(parseFloat(slippage) * 100)
+
     setLoading(true)
     const res = await orderService.placeOrder(
       {
-        marketId:    `${pair.base}-${pair.quote}-${pair.type.toUpperCase()}`,
+        marketId,
         side,
         type,
         price:       type === 'limit' ? price : undefined,
         quantity,
         timeInForce: tif,
-        slippageBps: type === 'market' ? parseInt(slippage) * 100 : undefined,
+        expiresAt:   tif === 'GTD' ? new Date(gtdExpiry).toISOString() : undefined,
+        slippageBps: type === 'market' ? slippageBps : undefined,
+        leverage:    perpEnabled ? leverage : undefined,
       },
       sessionToken,
     )
@@ -221,6 +235,7 @@ export default function OrderEntry({
       const perpSuffix = perpEnabled ? ` ${leverage}x` : ''
       toast('success', 'Order placed', `${type === 'limit' ? 'Limit' : 'Market'} ${sideLabel.toLowerCase()} ${qtyNum} ${pair.base}${perpSuffix}`)
       setQuantity('')
+      setGtdExpiry('')
       setPrice(prefillPrice?.toFixed(2) ?? '')
     } else {
       toast('error', 'Order failed', res.error.message)
@@ -266,7 +281,7 @@ export default function OrderEntry({
 
       {/* Quantity */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <FieldLabel>Quantity (NFTs)</FieldLabel>
+        <FieldLabel>Quantity ({pair.base})</FieldLabel>
         <FieldInput value={quantity} onChange={v => setQuantity(v.replace(/\D/g, ''))} suffix={pair.base} />
       </div>
 
@@ -289,6 +304,29 @@ export default function OrderEntry({
               )
             })}
           </div>
+        </div>
+      )}
+
+      {/* GTD expiration datetime */}
+      {type === 'limit' && tif === 'GTD' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <FieldLabel>Expires at</FieldLabel>
+          <input
+            type="datetime-local"
+            value={gtdExpiry}
+            min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+            onChange={e => setGtdExpiry(e.target.value)}
+            style={{
+              height: 40, padding: '0 12px', background: 'var(--surface-3)',
+              border: `1px solid ${gtdExpiry && new Date(gtdExpiry) <= new Date() ? 'var(--down-500)' : 'var(--border)'}`,
+              borderRadius: 6, fontSize: 13, color: 'var(--text-primary)',
+              fontFamily: 'var(--font-mono)', width: '100%', boxSizing: 'border-box',
+              colorScheme: 'dark',
+            }}
+          />
+          {gtdExpiry && new Date(gtdExpiry) <= new Date() && (
+            <span style={{ fontSize: 11, color: 'var(--down-500)' }}>Expiration must be in the future</span>
+          )}
         </div>
       )}
 
@@ -329,20 +367,25 @@ export default function OrderEntry({
         )}
       </div>
 
-      {/* Slippage (market orders only) */}
+      {/* Market order slippage + depth note */}
       {type === 'market' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', flexShrink: 0 }}>Slippage</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {['0.5%', '1%', '2%'].map(s => {
-              const active = slippage === s
-              return (
-                <button key={s} onClick={() => setSlippage(s)} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 4, cursor: 'pointer', background: active ? 'var(--accent-tint)' : 'transparent', border: `1px solid ${active ? 'var(--border-accent)' : 'var(--border)'}`, color: active ? '#fff' : 'var(--text-tertiary)' }}>
-                  {s}
-                </button>
-              )
-            })}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', flexShrink: 0 }}>Slippage</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {['0.5%', '1%', '2%'].map(s => {
+                const active = slippage === s
+                return (
+                  <button key={s} onClick={() => setSlippage(s)} style={{ fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 4, cursor: 'pointer', background: active ? 'var(--accent-tint)' : 'transparent', border: `1px solid ${active ? 'var(--border-accent)' : 'var(--border)'}`, color: active ? '#fff' : 'var(--text-tertiary)' }}>
+                    {s}
+                  </button>
+                )
+              })}
+            </div>
           </div>
+          <span style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+            Market orders fill at best available price. Order reverts if price moves beyond slippage tolerance.
+          </span>
         </div>
       )}
 
@@ -368,7 +411,7 @@ export default function OrderEntry({
       {/* Perp disclaimer */}
       {perpEnabled && (
         <div style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.5, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }}>
-          Liquidation price is an estimate for display only. Actual liquidation is determined onchain. Max leverage is {PERP_MAX_LEVERAGE}x. Liquidation fee: 3% of notional.
+          Liquidation price is an estimate for display only. Actual liquidation is determined by the protocol team. Max leverage is {PERP_MAX_LEVERAGE}x. Liquidation fee: 3% of notional.
         </div>
       )}
     </div>

@@ -13,7 +13,6 @@ import {
 import { chartService } from '../../services/chartService'
 import type { Candle } from '../../types'
 import type { CandleInterval } from '../../services/chartService'
-import type { Pair } from '../../types'
 
 const TIMEFRAMES: CandleInterval[] = ['1m', '5m', '15m', '1h', '4h', '1D']
 
@@ -40,21 +39,20 @@ function fmt2(n: number) {
 }
 
 interface PriceChartProps {
-  pair: Pair
+  marketId: string
 }
 
-export default function PriceChart({ pair }: PriceChartProps) {
+export default function PriceChart({ marketId }: PriceChartProps) {
   const [tf, setTf]              = useState<CandleInterval>('1h')
   const [loading, setLoading]    = useState(true)
   const [error, setError]        = useState<string | null>(null)
+  const [empty, setEmpty]        = useState(false)
   const [lastCandle, setLastCandle] = useState<Candle | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
   const volSeriesRef    = useRef<ISeriesApi<'Histogram'> | null>(null)
-
-  const marketId = `${pair.base}-${pair.quote}-SPOT`
 
   // Create chart once
   useEffect(() => {
@@ -141,9 +139,10 @@ export default function PriceChart({ pair }: PriceChartProps) {
 
   // Load candles on market/interval change
   const loadCandles = useCallback(async () => {
-    if (!candleSeriesRef.current || !volSeriesRef.current) return
+    if (!candleSeriesRef.current || !volSeriesRef.current || !marketId) return
     setLoading(true)
     setError(null)
+    setEmpty(false)
 
     const res = await chartService.getCandles(marketId, tf, 300)
     if (!res.ok) {
@@ -156,6 +155,7 @@ export default function PriceChart({ pair }: PriceChartProps) {
 
     const candles = res.data
     if (candles.length === 0) {
+      setEmpty(true)
       setLoading(false)
       return
     }
@@ -253,12 +253,22 @@ export default function PriceChart({ pair }: PriceChartProps) {
           </div>
         )}
 
-        {error && !loading && (
+        {empty && !loading && !error && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex',
             alignItems: 'center', justifyContent: 'center', zIndex: 10,
           }}>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No trades yet</span>
+          </div>
+        )}
+
+        {error && !loading && (
+          <div style={{
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10,
+          }}>
             <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{error}</span>
+            <button onClick={loadCandles} style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
           </div>
         )}
       </div>

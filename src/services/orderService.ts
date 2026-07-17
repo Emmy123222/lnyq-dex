@@ -83,6 +83,9 @@ export const orderService = {
           price:       req.price ? parseFloat(req.price) : undefined,
           quantity:    parseInt(req.quantity),
           timeInForce: req.timeInForce,
+          expiresAt:   req.expiresAt,
+          slippageBps: req.slippageBps,
+          leverage:    req.leverage,
         },
         sessionToken: token,
       })

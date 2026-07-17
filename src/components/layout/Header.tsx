@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import DepositModal from '../ui/DepositModal'
 import NetworkStatus from '../ui/NetworkStatus'
 import EnvBadge from '../ui/EnvBadge'
+import { authService } from '../../services/authService'
+import { portfolioService } from '../../services/portfolioService'
 
 const NAV_PRIMARY = [
   { label: 'Trade',     path: '/trade' },
@@ -46,6 +48,20 @@ export default function Header() {
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [moreOpen,    setMoreOpen]    = useState(false)
   const [depositOpen, setDepositOpen] = useState(false)
+  const [usdcBalance, setUsdcBalance] = useState<string | null>(null)
+
+  const session  = authService.loadSession()
+  const username = session?.username ?? ''
+  const initials = username ? username.slice(0, 2).toUpperCase() : '??'
+
+  useEffect(() => {
+    if (!session?.userId) return
+    portfolioService.getBalances(session.userId).then(res => {
+      if (!res.ok) return
+      const usdc = res.data.find(b => b.asset === 'USDC')
+      if (usdc) setUsdcBalance(parseFloat(usdc.available).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    })
+  }, []) // eslint-disable-line
 
   const isActive = (path: string) => {
     if (path === '/portfolio') return location.pathname === '/portfolio' || location.pathname === '/orders'
@@ -142,12 +158,14 @@ export default function Header() {
           </div>
 
           {/* Available balance */}
-          <div className="hidden lg:flex flex-col items-end gap-0 mr-[2px]">
-            <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Available</span>
-            <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-              50,000.00 USDC
-            </span>
-          </div>
+          {usdcBalance !== null && (
+            <div className="hidden lg:flex flex-col items-end gap-0 mr-[2px]">
+              <span style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>Available</span>
+              <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {usdcBalance} USDC
+              </span>
+            </div>
+          )}
 
           {/* Deposit — opens modal */}
           <button
@@ -183,9 +201,9 @@ export default function Header() {
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer', background: 'transparent' }}
             >
               <span style={{ width: 26, height: 26, borderRadius: 5, background: 'linear-gradient(135deg, #A051FC, #531C97)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#fff', flexShrink: 0 }}>
-                TM
+                {initials}
               </span>
-              <span className="hidden sm:block" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>tunmise</span>
+              {username && <span className="hidden sm:block" style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>{username}</span>}
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2.5">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
@@ -198,7 +216,7 @@ export default function Header() {
                   {[
                     { label: 'Funding',  action: () => navigate('/funding') },
                     { label: 'Settings', action: () => navigate('/settings') },
-                    { label: 'Sign out', action: () => navigate('/auth'), danger: true },
+                    { label: 'Sign out', action: () => { authService.clearSession(); navigate('/auth', { replace: true }) }, danger: true },
                   ].map(item => (
                     <button
                       key={item.label}

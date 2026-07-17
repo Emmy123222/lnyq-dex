@@ -141,15 +141,15 @@ function LevelRow({ level, side, maxDepth, flash, onClick }: RowProps) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface OrderBookProps {
-  marketId?:    string
+  marketId?:     string
   onPriceClick?: (price: number) => void
-  maxRows?:     number
+  maxRows?:      number
 }
 
 export default function OrderBook({
-  marketId    = 'LNYQNFT-USDC-SPOT',
+  marketId,
   onPriceClick,
-  maxRows     = 12,
+  maxRows = 12,
 }: OrderBookProps) {
   const [book,      setBook]     = useState<OrderBookData | null>(null)
   const [loading,   setLoading]  = useState(true)
@@ -174,6 +174,7 @@ export default function OrderBook({
 
   // Book subscription
   useEffect(() => {
+    if (!marketId) { setLoading(false); return }
     let cancelled = false
     setLoading(true)
 
@@ -193,6 +194,7 @@ export default function OrderBook({
 
   // Trade price tracking
   useEffect(() => {
+    if (!marketId) return
     let cancelled = false
 
     orderBookService.getRecentTrades(marketId, 1).then(res => {
@@ -234,6 +236,14 @@ export default function OrderBook({
   }, [book, grouping, triggerFlash])
 
   // ── Derived ─────────────────────────────────────────────────────────────────
+
+  if (!marketId) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No market selected</span>
+      </div>
+    )
+  }
 
   if (loading || !book) {
     return (

@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { marketService } from '../services/marketService'
+import { FLAGS } from '../config/featureFlags'
 import type { Pair } from '../types'
+
+type MarketPair = Pair & { marketId: string }
 
 function fmt(n: number, dec = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
@@ -14,7 +17,7 @@ const EXPLORE_SWATCHES = [
   'linear-gradient(135deg,#2EBD85,#1a7a55)',
 ]
 
-function CollectionCard({ pair, swatch, onTrade, onDetail }: { pair: Pair; swatch: string; onTrade: () => void; onDetail: () => void }) {
+function CollectionCard({ pair, swatch, onTrade, onDetail }: { pair: MarketPair; swatch: string; onTrade: () => void; onDetail: () => void }) {
   return (
     <div
       onClick={onDetail}
@@ -71,28 +74,30 @@ export default function MarketDetails() {
   const [search,  setSearch]  = useState('')
   const [filter,  setFilter]  = useState<'All' | 'Perps' | 'Spot'>('All')
   const [view,    setView]    = useState<'table' | 'grid'>('table')
-  const [pairs,   setPairs]   = useState<Pair[]>([])
+  const [pairs,   setPairs]   = useState<MarketPair[]>([])
 
   useEffect(() => {
-    // Always fetch live market data from the backend
     let cancelled = false
     marketService.listAllMarkets().then(async res => {
       if (cancelled || !res.ok) return
-      const built: Pair[] = await Promise.all(res.data.map(async m => {
+      const built: MarketPair[] = await Promise.all(res.data.map(async m => {
         const ticker = await marketService.getTicker(m.id)
         const lastPrice  = ticker.ok ? parseFloat(ticker.data.lastPrice)  : 0
         const change24h  = ticker.ok ? parseFloat(ticker.data.change24h)  : 0
         const volume24h  = ticker.ok ? parseFloat(ticker.data.volume24h)  : 0
         const high24h    = ticker.ok ? parseFloat(ticker.data.high24h)    : 0
         const low24h     = ticker.ok ? parseFloat(ticker.data.low24h)     : 0
-        return { base: m.baseAsset, quote: m.quoteAsset, type: m.type, lastPrice, change24h, volume24h, high24h, low24h }
+        return { marketId: m.id, base: m.baseAsset, quote: m.quoteAsset, type: m.type, lastPrice, change24h, volume24h, high24h, low24h }
       }))
       if (!cancelled) setPairs(built)
     })
     return () => { cancelled = true }
   }, [])
 
-  const filtered = pairs.filter(p => {
+  // Phase 1: only show spot markets unless perps are enabled
+  const visiblePairs = FLAGS.PERPS ? pairs : pairs.filter(p => p.type === 'spot')
+
+  const filtered = visiblePairs.filter(p => {
     const matchFilter = filter === 'All' || (filter === 'Perps' && p.type === 'perp') || (filter === 'Spot' && p.type === 'spot')
     const matchSearch = search === '' || p.base.toLowerCase().includes(search.toLowerCase())
     return matchFilter && matchSearch
@@ -104,12 +109,12 @@ export default function MarketDetails() {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em', marginBottom: 6 }}>Markets</div>
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Trade every asset. Illiquid NFT collections, listed as spot and perps.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Phase 1 spot markets. Trade collection tokens on the local CLOB simulation.</div>
         </div>
         <div style={{ display: 'flex', gap: 34 }}>
           {[
-            { label: '24h Volume',    value: pairs.length > 0 ? `$${(pairs.reduce((s, p) => s + p.volume24h, 0) / 1_000_000).toFixed(1)}M` : '—' },
-            { label: 'Markets',       value: pairs.length > 0 ? String(pairs.length) : '—' },
+            { label: '24h Volume',    value: visiblePairs.length > 0 ? `$${(visiblePairs.reduce((s, p) => s + p.volume24h, 0) / 1_000_000).toFixed(1)}M` : '—' },
+            { label: 'Markets',       value: visiblePairs.length > 0 ? String(visiblePairs.length) : '—' },
           ].map(s => (
             <div key={s.label} style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-end' }}>
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{s.label}</span>
@@ -122,10 +127,10 @@ export default function MarketDetails() {
       {/* Filter + Search + View toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6, padding: 3 }}>
-          {(['All', 'Perps', 'Spot'] as const).map(f => (
+          {(['All', 'Spot', ...(FLAGS.PERPS ? ['Perps'] as const : [])] as const).map(f => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
+              onClick={() => setFilter(f as typeof filter)}
               style={{ padding: '5px 14px', borderRadius: 4, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: filter === f ? 'var(--accent)' : 'transparent', color: filter === f ? '#fff' : 'var(--text-tertiary)', border: 'none' }}
             >
               {f}
@@ -161,13 +166,15 @@ export default function MarketDetails() {
           </button>
         </div>
 
-        {/* List a market */}
-        <button
-          onClick={() => navigate('/markets/new')}
-          style={{ height: 38, padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 700, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
-        >
-          + List Market
-        </button>
+        {/* List Market — available in Phase 3 */}
+        {FLAGS.PRESALE && (
+          <button
+            onClick={() => navigate('/markets/new')}
+            style={{ height: 38, padding: '0 14px', borderRadius: 6, fontSize: 13, fontWeight: 700, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            + List Market
+          </button>
+        )}
       </div>
 
       {view === 'table' ? (
@@ -183,7 +190,7 @@ export default function MarketDetails() {
               key={`${pair.base}-${pair.type}`}
               pair={pair}
               onTrade={() => navigate('/trade')}
-              onDetail={() => navigate(`/markets/${pair.base.toLowerCase()}`)}
+              onDetail={() => navigate(`/markets/${pair.marketId}`)}
             />
           ))}
         </div>
@@ -196,7 +203,7 @@ export default function MarketDetails() {
               pair={pair}
               swatch={EXPLORE_SWATCHES[i % EXPLORE_SWATCHES.length]}
               onTrade={() => navigate('/trade')}
-              onDetail={() => navigate(`/markets/${pair.base.toLowerCase()}`)}
+              onDetail={() => navigate(`/markets/${pair.marketId}`)}
             />
           ))}
         </div>
@@ -205,7 +212,7 @@ export default function MarketDetails() {
   )
 }
 
-function MarketRow({ pair, onTrade, onDetail }: { pair: Pair; onTrade: () => void; onDetail: () => void }) {
+function MarketRow({ pair, onTrade, onDetail }: { pair: MarketPair; onTrade: () => void; onDetail: () => void }) {
   const label = pair.type === 'spot' ? `${pair.base} / ${pair.quote}` : `${pair.base} - ${pair.quote}`
   return (
     <div

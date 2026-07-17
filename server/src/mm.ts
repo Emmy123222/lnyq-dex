@@ -64,6 +64,13 @@ async function requote(marketId: string) {
 }
 
 async function seedHistoricalCandles(marketId: string, referencePrice: number) {
+  // Guard: never seed random simulation data in devnet/staging/production.
+  // Set LNYQ_ALLOW_SIM_SEED=1 to enable (local-api dev only).
+  if (!process.env.LNYQ_ALLOW_SIM_SEED) {
+    console.log(`[MM] seedHistoricalCandles: skipped for ${marketId}. Set LNYQ_ALLOW_SIM_SEED=1 (local dev only).`)
+    return
+  }
+
   const existing = await prisma.candle.count({ where: { marketId, interval: '1m' } })
   if (existing > 100) {
     console.log(`[MM] Candles already seeded for ${marketId} (${existing} 1m)`)

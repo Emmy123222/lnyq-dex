@@ -4,20 +4,34 @@ import type { PublicTrade } from '../../types'
 
 interface RecentTradesProps {
   marketId?: string
+  baseSymbol?: string
 }
 
-export default function RecentTrades({ marketId = 'LNYQNFT-USDC-SPOT' }: RecentTradesProps) {
+export default function RecentTrades({ marketId, baseSymbol = 'Size' }: RecentTradesProps) {
   const [trades,  setTrades]  = useState<PublicTrade[]>([])
   const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState(false)
 
-  useEffect(() => {
-    let cancelled = false
+  const load = () => {
+    if (!marketId) { setLoading(false); return }
+    setLoading(true)
+    setError(false)
     orderBookService.getRecentTrades(marketId).then(res => {
-      if (cancelled) return
       if (res.ok) setTrades(res.data)
+      else setError(true)
       setLoading(false)
     })
-    return () => { cancelled = true }
+  }
+
+  useEffect(() => {
+    load()
+  }, [marketId]) // eslint-disable-line
+
+  useEffect(() => {
+    if (!marketId) return
+    return orderBookService.subscribeTrades(marketId, trade => {
+      setTrades(prev => [trade, ...prev].slice(0, 50))
+    })
   }, [marketId])
 
   return (
@@ -27,14 +41,26 @@ export default function RecentTrades({ marketId = 'LNYQNFT-USDC-SPOT' }: RecentT
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.7fr 1fr', padding: '6px 14px', flexShrink: 0 }}>
         <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Price</span>
-        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'right' }}>NFTs</span>
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'right' }}>{baseSymbol}</span>
         <span style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'right' }}>Time</span>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-        {loading && (
+        {!marketId && (
+          <div style={{ padding: '20px 14px', fontSize: 12, color: 'var(--text-tertiary)' }}>No market selected</div>
+        )}
+        {marketId && loading && (
           <div style={{ padding: '20px 14px', fontSize: 12, color: 'var(--text-tertiary)' }}>Loading…</div>
         )}
-        {!loading && trades.map(trade => (
+        {marketId && !loading && error && (
+          <div style={{ padding: '20px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Trades unavailable</span>
+            <button onClick={load} style={{ fontSize: 11, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}>Retry</button>
+          </div>
+        )}
+        {marketId && !loading && !error && trades.length === 0 && (
+          <div style={{ padding: '20px 14px', fontSize: 12, color: 'var(--text-tertiary)' }}>No trades yet</div>
+        )}
+        {!loading && !error && trades.map(trade => (
           <div
             key={trade.id}
             style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.7fr 1fr', padding: '3px 14px', height: 22, alignItems: 'center' }}

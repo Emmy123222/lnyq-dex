@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
 import { marketService } from '../services/marketService'
+import { FLAGS } from '../config/featureFlags'
 import type { Market } from '../types'
 
-const CONDITIONS = ['Price above', 'Price below', 'Funding above', 'Funding below', 'Liquidation warning']
+const SPOT_CONDITIONS  = ['Price above', 'Price below']
+const PERP_CONDITIONS  = ['Funding above', 'Funding below', 'Liquidation warning']
+const CONDITIONS = FLAGS.PERPS ? [...SPOT_CONDITIONS, ...PERP_CONDITIONS] : SPOT_CONDITIONS
 
 export default function Alerts() {
   const [markets,   setMarkets]   = useState<Market[]>([])

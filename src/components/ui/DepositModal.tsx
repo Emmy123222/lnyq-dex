@@ -80,43 +80,20 @@ function AmountField({ value, onChange, autoFocus }: { value: string; onChange: 
 
 // ── Standard deposit tab ──────────────────────────────────────────────────────
 
-function StandardTab({ onClose }: { onClose: () => void }) {
-  const [chain,   setChain]   = useState('Arbitrum')
-  const [amount,  setAmount]  = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const submit = () => {
-    setLoading(true)
-    setTimeout(() => { setLoading(false); onClose() }, 1200)
-  }
-
+function StandardTab() {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <DropdownSelect label="Asset"          value="USDC"  options={['USDC']}         onChange={() => {}} />
-      <DropdownSelect label="Deposit Chain"  value={chain} options={['Arbitrum', 'Ethereum', 'Base', 'Optimism']} onChange={setChain} />
-      <AmountField value={amount} onChange={setAmount} autoFocus />
-
-      <div style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>Summary</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-          <span style={{ color: 'var(--text-tertiary)' }}>Network fee</span>
-          <span style={{ color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }}>0.20 USDC</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginTop: 4 }}>
-          <span style={{ color: 'var(--text-tertiary)' }}>You receive</span>
-          <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>
-            {amount && parseFloat(amount) > 0.2 ? `${(parseFloat(amount) - 0.2).toFixed(2)} USDC` : '—'}
-          </span>
-        </div>
+    <div style={{ textAlign: 'center', padding: '32px 0' }}>
+      <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(160,81,252,0.12)', border: '1px solid rgba(160,81,252,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px' }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
       </div>
-
-      <button
-        onClick={submit}
-        disabled={loading || !amount || parseFloat(amount) <= 0}
-        style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--accent)', color: '#fff', border: 'none', cursor: loading || !amount ? 'not-allowed' : 'pointer', opacity: loading || !amount ? 0.65 : 1 }}
-      >
-        {loading ? 'Depositing...' : 'Deposit'}
-      </button>
+      <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 8 }}>Deposit integration unavailable</div>
+      <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6, maxWidth: 300, margin: '0 auto' }}>
+        On-chain deposits require wallet integration. This feature will be available once the protocol team wires the wallet adapter.
+      </div>
     </div>
   )
 }
@@ -267,7 +244,7 @@ export default function DepositModal({ onClose }: DepositModalProps) {
         {/* Tab content */}
         <div style={{ padding: '18px 24px 24px' }}>
           {tab === 'standard'
-            ? <StandardTab onClose={onClose} />
+            ? <StandardTab />
             : <CrossChainTab onClose={onClose} />
           }
         </div>

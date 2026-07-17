@@ -85,6 +85,30 @@ export const authService = {
     return apiFetch<SignupResponse>('/auth/signup', { method: 'POST', body: req })
   },
 
+  async login(email: string): Promise<ServiceResult<SignupResponse>> {
+    if (ENV.IS_LOCAL_API) {
+      const res = await apiFetch<{
+        userId: string; sessionToken: string; referralCode: string; username: string
+      }>('/auth/login', {
+        method: 'POST',
+        body: { email: email.trim().toLowerCase() },
+      })
+      if (!res.ok) return { ok: false, error: res.error }
+      return {
+        ok: true,
+        data: {
+          userId:       res.data.userId,
+          username:     res.data.username,
+          email:        email.trim().toLowerCase(),
+          referralCode: res.data.referralCode,
+          sessionToken: res.data.sessionToken,
+          createdAt:    new Date().toISOString(),
+        },
+      }
+    }
+    return apiFetch<SignupResponse>('/auth/login', { method: 'POST', body: { email } })
+  },
+
   /** Persist session to sessionStorage */
   saveSession(session: AuthSession): void {
     try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch { /* storage unavailable */ }

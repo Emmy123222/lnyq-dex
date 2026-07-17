@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { portfolioService } from '../services/portfolioService'
 import { orderService, statusLabel } from '../services/orderService'
 import { authService } from '../services/authService'
+import { FLAGS } from '../config/featureFlags'
 import type { PortfolioPosition, Order, Balance, PortfolioStats, OrderStatus } from '../types'
 
 function getUserId(): string {
@@ -55,9 +56,11 @@ function PositionRow({ pos }: { pos: PortfolioPosition }) {
         <span style={{ fontSize: 10, color: pnlUp ? 'var(--up-500)' : 'var(--down-500)' }}>({pos.unrealizedPnlPct})</span>
       </div>
       <span style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', textAlign: 'right' }}>—</span>
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'var(--down-400)', background: 'rgba(246,70,93,0.12)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 4, cursor: 'pointer' }}>Close</button>
-      </div>
+      {FLAGS.PERPS ? (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button style={{ padding: '3px 8px', fontSize: 11, fontWeight: 700, color: 'var(--down-400)', background: 'rgba(246,70,93,0.12)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 4, cursor: 'pointer' }}>Close</button>
+        </div>
+      ) : <span />}
     </div>
   )
 }
@@ -125,7 +128,8 @@ export default function Portfolio() {
 
   const handleCancel = async (orderId: string) => {
     const session = authService.loadSession()
-    const res = await orderService.cancelOrder({ orderId, marketId: '' }, session?.sessionToken ?? '')
+    const order = openOrders.find(o => o.id === orderId)
+    const res = await orderService.cancelOrder({ orderId, marketId: order?.marketId ?? '' }, session?.sessionToken ?? '')
     if (res.ok) setOpenOrders(prev => prev.filter(o => o.id !== orderId))
   }
 
@@ -141,8 +145,8 @@ export default function Portfolio() {
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 }}>
         <span style={{ fontSize: 24, fontWeight: 800, color: '#fff' }}>Portfolio</span>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Withdraw</button>
-          <button style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Deposit</button>
+          <button disabled title="Withdraw unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Withdraw</button>
+          <button disabled title="Deposit unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Deposit</button>
         </div>
       </div>
 
@@ -205,7 +209,7 @@ export default function Portfolio() {
             {tab === 'Positions' && (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 1fr 0.8fr', padding: '9px 14px' }}>
-                  {['Position', 'Size / NFTs', 'Entry', 'Mark', 'PnL (USDC)', 'Liq. Price', ''].map((h, i) => (
+                  {['Position', 'Size / Tokens', 'Entry', 'Mark', 'PnL (USDC)', 'Liq. Price', ''].map((h, i) => (
                     <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 && i < 6 ? 'right' : undefined }}>{h}</span>
                   ))}
                 </div>

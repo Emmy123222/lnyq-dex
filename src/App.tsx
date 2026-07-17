@@ -1,8 +1,15 @@
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { ToastProvider } from './components/ui/Toast'
 import AppShell from './components/layout/AppShell'
 import AuthFlow from './pages/auth/AuthFlow'
+import { authService } from './services/authService'
+
+function RequireAuth() {
+  const session = authService.loadSession()
+  if (!session?.sessionToken) return <Navigate to="/auth" replace />
+  return <Outlet />
+}
 import TradePage from './pages/TradePage'
 import Portfolio from './pages/Portfolio'
 import OrderHistory from './pages/OrderHistory'
@@ -26,6 +33,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<AuthFlow />} />
+          <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>
             <Route path="/trade"         element={<TradePage />} />
             <Route path="/portfolio"     element={<Portfolio />} />
@@ -43,6 +51,7 @@ export default function App() {
             <Route path="/stake"         element={<Stake />} />
             <Route path="/earn"          element={<Earn />} />
             <Route path="/launchpad"     element={<Launchpad />} />
+          </Route>
           </Route>
           <Route path="*" element={<Navigate to="/auth" replace />} />
         </Routes>

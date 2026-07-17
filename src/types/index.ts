@@ -123,6 +123,8 @@ export interface PlaceOrderRequest {
   expiresAt?: string
   /** Basis points. For market orders only. */
   slippageBps?: number
+  /** Perp orders only: 1–20. Omit for spot. */
+  leverage?: number
   clientOrderId?: string
 }
 

@@ -97,6 +97,13 @@ export function buildRouter(): Router {
       await tx.balance.create({
         data: { userId, asset: 'USDC', available: 1_000, locked: 0, pending: 0 },
       })
+      // Mark as drip-claimed so the /drip/claim endpoint cannot double-fund
+      await tx.transaction.create({
+        data: {
+          userId, type: 'DRIP', status: 'CONFIRMED', asset: 'USDC', amount: 1_000,
+          metadata: { amount: '1000', asset: 'USDC', source: 'signup' },
+        },
+      })
 
       if (referredById && referredByCode) {
         await tx.referral.create({
@@ -124,6 +131,21 @@ export function buildRouter(): Router {
     const ctx = await requireSession(req.headers.authorization)
     if (!ctx) return res.status(401).json({ error: 'Session expired' })
     res.json({ ok: true, ...ctx })
+  })
+
+  // Returning-user login — looks up account by email, rotates session token
+  r.post('/auth/login', async (req, res) => {
+    const { email } = req.body as { email?: string }
+    if (!email) return res.status(400).json({ error: 'Email required' })
+
+    const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } })
+    if (!user) return res.status(404).json({ error: 'NO_ACCOUNT', message: 'No account found for this email address.' })
+    if (user.isMarketMaker) return res.status(403).json({ error: 'FORBIDDEN', message: 'This account is not a user account.' })
+
+    const sessionToken = randomUUID()
+    await prisma.user.update({ where: { id: user.id }, data: { sessionToken } })
+
+    res.json({ ok: true, userId: user.id, username: user.username, referralCode: user.referralCode, sessionToken })
   })
 
   // ── Markets ─────────────────────────────────────────────────────────────────
@@ -354,7 +376,7 @@ export function buildRouter(): Router {
       price:       price !== undefined ? Number(price) : undefined,
       quantity:    Number(quantity),
       timeInForce: timeInForce as 'GTC' | 'IOC' | 'FOK' | 'GTD',
-      expiresAt:   expiresAt ? new Date(Number(expiresAt)) : undefined,
+      expiresAt:   expiresAt ? new Date(String(expiresAt)) : undefined,
       leverage:    leverage !== undefined ? Number(leverage) : undefined,
     })
 
@@ -491,7 +513,7 @@ export function buildRouter(): Router {
     const txn = await prisma.transaction.findFirst({
       where: { userId: ctx.userId, type: 'DRIP' },
     })
-    res.json({ ok: true, data: { claimed: !!txn, amount: '10000.00', asset: 'USDC' } })
+    res.json({ ok: true, data: { claimed: !!txn, amount: '1000.00', asset: 'USDC' } })
   })
 
   r.post('/drip/claim', async (req, res) => {
@@ -508,8 +530,8 @@ export function buildRouter(): Router {
     await prisma.$transaction(async (tx) => {
       await tx.balance.upsert({
         where:  { userId_asset: { userId: ctx.userId, asset: 'USDC' } },
-        update: { available: { increment: 10_000 } },
-        create: { userId: ctx.userId, asset: 'USDC', available: 10_000, locked: 0, pending: 0 },
+        update: { available: { increment: 1_000 } },
+        create: { userId: ctx.userId, asset: 'USDC', available: 1_000, locked: 0, pending: 0 },
       })
       await tx.transaction.create({
         data: {
@@ -517,14 +539,14 @@ export function buildRouter(): Router {
           type:   'DRIP',
           status: 'CONFIRMED',
           asset:  'USDC',
-          amount: 10_000,
-          metadata: { amount: '10000', asset: 'USDC' },
+          amount: 1_000,
+          metadata: { amount: '1000', asset: 'USDC' },
         },
       })
     })
 
     res.json({ ok: true, data: {
-      claimed: true, amount: '10000.00', asset: 'USDC',
+      claimed: true, amount: '1000.00', asset: 'USDC',
       txId: randomUUID(), claimedAt: Date.now(),
     } })
   })

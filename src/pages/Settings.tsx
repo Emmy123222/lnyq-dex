@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { authService } from '../services/authService'
+import { FLAGS } from '../config/featureFlags'
 
 const RAIL_ITEMS = [
   { label: 'Profile',              danger: false },
@@ -10,11 +11,11 @@ const RAIL_ITEMS = [
 ]
 
 const NOTIF_ITEMS = [
-  { label: 'Order Filled',         desc: 'When your order is fully executed.',     on: true  },
-  { label: 'Partial Fill',         desc: 'When your order is partially filled.',   on: true  },
-  { label: 'Order Cancelled',      desc: 'When an order is cancelled.',            on: false },
-  { label: 'Liquidation Warning',  desc: 'When margin ratio approaches limit.',    on: true  },
-  { label: 'Funding Rate',         desc: 'Funding rate settlement notifications.', on: false },
+  { label: 'Order Filled',         desc: 'When your order is fully executed.',     on: true,  perpOnly: false },
+  { label: 'Partial Fill',         desc: 'When your order is partially filled.',   on: true,  perpOnly: false },
+  { label: 'Order Cancelled',      desc: 'When an order is cancelled.',            on: false, perpOnly: false },
+  { label: 'Liquidation Warning',  desc: 'When margin ratio approaches limit.',    on: true,  perpOnly: true  },
+  { label: 'Funding Rate',         desc: 'Funding rate settlement notifications.', on: false, perpOnly: true  },
 ]
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
@@ -126,15 +127,18 @@ export default function Settings() {
           <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 22 }}>
             <span style={{ fontSize: 15, fontWeight: 800, color: '#fff', display: 'block', marginBottom: 8 }}>Notifications</span>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 14 }}>Notification delivery is not yet connected. These preferences will be applied when the backend is configured.</div>
-            {NOTIF_ITEMS.map((n, i) => (
-              <div key={n.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 0', borderBottom: i < NOTIF_ITEMS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{n.label}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{n.desc}</div>
+            {NOTIF_ITEMS.map((n, i) => {
+              if (n.perpOnly && !FLAGS.PERPS) return null
+              return (
+                <div key={n.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 0', borderBottom: i < NOTIF_ITEMS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{n.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{n.desc}</div>
+                  </div>
+                  <Toggle on={notifs[i]} onChange={v => setNotifs(prev => prev.map((x, j) => j === i ? v : x))} />
                 </div>
-                <Toggle on={notifs[i]} onChange={v => setNotifs(prev => prev.map((x, j) => j === i ? v : x))} />
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
