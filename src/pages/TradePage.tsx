@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import PriceChart from '../components/trading/PriceChart'
+import MarketChartCard from '../components/trading/MarketChartCard'
 import OrderBook from '../components/trading/OrderBook'
 import RecentTrades from '../components/trading/RecentTrades'
 import OrderEntry from '../components/trading/OrderEntry'
@@ -378,8 +378,14 @@ export default function TradePage() {
       {/* Desktop layout */}
       <div className="hidden lg:flex flex-1 min-h-0 gap-3 p-3 overflow-hidden">
         <div className="flex flex-col gap-3 flex-1 min-h-0 min-w-0">
-          <div style={{ height: 466, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-            <PriceChart marketId={marketId} />
+          <div style={{ height: 466, overflow: 'hidden', flexShrink: 0 }}>
+            <MarketChartCard
+              marketId={marketId}
+              baseAsset={activeMarket?.baseAsset ?? ''}
+              quoteAsset={activeMarket?.quoteAsset ?? ''}
+              marketType={activeMarket?.type}
+              tickerOverride={ticker}
+            />
           </div>
           <div style={{ flex: 1, minHeight: 0, background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <PositionsPanel market={activeMarket} />
@@ -425,7 +431,7 @@ export default function TradePage() {
           ))}
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          {mobileTab === 'chart'  && <div className="h-full" style={{ background: 'var(--surface-1)' }}><PriceChart marketId={marketId} /></div>}
+          {mobileTab === 'chart'  && <div className="h-full"><MarketChartCard marketId={marketId} baseAsset={activeMarket?.baseAsset ?? ''} quoteAsset={activeMarket?.quoteAsset ?? ''} marketType={activeMarket?.type} tickerOverride={ticker} /></div>}
           {mobileTab === 'book'   && <OrderBook marketId={marketId} onPriceClick={p => { setClickedPrice(p); setMobileTab('order') }} />}
           {mobileTab === 'trades' && <RecentTrades marketId={marketId} baseSymbol={activeMarket?.baseAsset} />}
           {mobileTab === 'order'  && <div className="overflow-y-auto h-full"><OrderEntry marketId={marketId} isPerp={isPerp} prefillPrice={clickedPrice} pair={pair} availableUsdc={availableUsdc} availableBase={availableBase} /></div>}

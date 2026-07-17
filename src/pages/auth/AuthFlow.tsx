@@ -14,7 +14,6 @@ import { IconArrowRight, IconCheck } from '@tabler/icons-react'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { authService, validateAccessCodeFormat } from '../../services/authService'
-import { dripService } from '../../services/dripService'
 import { ENV } from '../../config/env'
 import type { AuthStep } from '../../types'
 
@@ -389,38 +388,19 @@ function AccountSetupStep({
 }
 
 function InitialFundingStep({
-  sessionToken,
+  sessionToken: _sessionToken,
   onNext,
 }: {
   sessionToken: string
   onNext: (claimed: boolean, amount?: string) => void
 }) {
-  const [loading, setLoading] = useState(false)
-  const [claimed, setClaimed] = useState(false)
-  const [error,   setError]   = useState('')
-
-  const claim = async () => {
-    setLoading(true)
-    setError('')
-    const res = await dripService.claim(sessionToken)
-    setLoading(false)
-    if (!res.ok) {
-      setError(res.error.message)
-      return
-    }
-    if (res.data.success) {
-      setClaimed(true)
-      setTimeout(() => onNext(true, res.data.amount), 1200)
-    } else {
-      setError(res.data.message ?? 'Claim failed — please try again.')
-    }
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
-        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Fund your account</h1>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>Claim 1,000 testnet USDC to start trading</p>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Account funded</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+          Your testnet allocation was credited automatically when your account was created.
+        </p>
       </div>
 
       <div style={{ borderRadius: 10, background: 'var(--accent-tint)', border: '1px solid var(--border-accent)', padding: 18 }}>
@@ -429,21 +409,14 @@ function InitialFundingStep({
           <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>One-time · no real value</span>
         </div>
         <div style={{ fontSize: 30, fontWeight: 900, color: '#fff' }}>1,000 USDC</div>
-        <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '6px 0 0' }}>
-          {claimed ? '✓ Credited to your account' : 'Automatically credited on claim'}
+        <p style={{ fontSize: 11, color: 'var(--up-500)', margin: '6px 0 0', fontWeight: 700 }}>
+          ✓ Already credited to your account
         </p>
       </div>
 
-      {error && <p style={{ fontSize: 12, color: 'var(--down-500)', fontWeight: 700, margin: 0 }}>{error}</p>}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Button variant="primary" size="lg" fullWidth loading={loading} onClick={claim} disabled={claimed}>
-          {claimed ? '✓ Claimed!' : 'Claim testnet USDC'}
-        </Button>
-        <Button variant="ghost" size="lg" fullWidth onClick={() => onNext(false)}>
-          Skip for now
-        </Button>
-      </div>
+      <Button variant="primary" size="lg" fullWidth onClick={() => onNext(true, '1000.00')}>
+        Continue to Trade
+      </Button>
 
       <p style={{ fontSize: 11, color: 'var(--text-tertiary)', textAlign: 'center', margin: 0 }}>
         Testnet USDC has no real value and is for testing purposes only.

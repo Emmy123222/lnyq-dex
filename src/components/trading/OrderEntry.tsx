@@ -20,9 +20,41 @@ import {
   BPS_DIVISOR, bpsToPercent, calcLiquidationPrice,
 } from '../../config/fees'
 import { orderService } from '../../services/orderService'
-import type { OrderSide, OrderType, TimeInForce, Pair } from '../../types'
+import { orderBookService } from '../../services/orderBookService'
+import type { OrderSide, OrderType, TimeInForce, Pair, OrderBook } from '../../types'
 
 const TIF_OPTIONS: TimeInForce[] = ['GTC', 'IOC', 'FOK', 'GTD']
+
+interface DepthPreview {
+  avgPrice: number
+  priceImpact: number
+  levelsConsumed: number
+  insufficient: boolean
+}
+
+function simulateFill(book: OrderBook | null, side: OrderSide, qty: number): DepthPreview | null {
+  if (!book || qty <= 0) return null
+  const levels = side === 'buy' ? book.asks : book.bids
+  if (levels.length === 0) return null
+  const midpoint = parseFloat(book.midpoint)
+  let remaining = qty
+  let filledCost = 0
+  let levelsConsumed = 0
+  for (const level of levels) {
+    if (remaining <= 0) break
+    const lp = parseFloat(level.price)
+    const ls = parseInt(level.size, 10)
+    const filled = Math.min(remaining, ls)
+    filledCost += filled * lp
+    remaining -= filled
+    levelsConsumed++
+  }
+  const insufficient = remaining > 0
+  const filledQty = qty - remaining
+  const avgPrice = filledQty > 0 ? filledCost / filledQty : 0
+  const priceImpact = midpoint > 0 ? Math.abs((avgPrice - midpoint) / midpoint) * 100 : 0
+  return { avgPrice, priceImpact, levelsConsumed, insufficient }
+}
 const LEVERAGE_MARKS = [1, 2, 3, 4, 5]
 
 interface OrderEntryProps {
@@ -150,6 +182,7 @@ export default function OrderEntry({
   const [slippage,   setSlippage]   = useState('1%')
   const [leverage,   setLeverage]   = useState(1)
   const [loading,    setLoading]    = useState(false)
+  const [book,       setBook]       = useState<OrderBook | null>(null)
 
   const perpEnabled = isPerp && FLAGS.PERPS
 
@@ -160,6 +193,11 @@ export default function OrderEntry({
   useEffect(() => {
     if (!isPerp) setLeverage(1)
   }, [isPerp])
+
+  useEffect(() => {
+    if (!marketId) return
+    return orderBookService.subscribe(marketId, setBook)
+  }, [marketId])
 
   // For display/preview computation only — not sent to backend as-is
   const priceNum    = Number(price)    || 0
@@ -178,6 +216,8 @@ export default function OrderEntry({
   const liqPrice = perpEnabled && priceNum > 0
     ? calcLiquidationPrice(side, priceNum, leverage)
     : 0
+
+  const depthPreview = type === 'market' && qtyNum > 0 ? simulateFill(book, side, qtyNum) : null
 
   const sideLabel    = side === 'buy' ? 'Buy' : 'Sell'
   const receiveLabel = side === 'buy'
@@ -367,7 +407,7 @@ export default function OrderEntry({
         )}
       </div>
 
-      {/* Market order slippage + depth note */}
+      {/* Market order slippage + depth preview */}
       {type === 'market' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -383,9 +423,33 @@ export default function OrderEntry({
               })}
             </div>
           </div>
-          <span style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
-            Market orders fill at best available price. Order reverts if price moves beyond slippage tolerance.
-          </span>
+
+          {/* Depth preview — only when quantity entered and book available */}
+          {depthPreview ? (
+            <div style={{ padding: '9px 12px', background: 'var(--surface-2)', border: `1px solid ${depthPreview.insufficient || depthPreview.priceImpact >= 1 ? 'rgba(246,70,93,0.35)' : 'var(--border-subtle)'}`, borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {depthPreview.insufficient ? (
+                <span style={{ fontSize: 11, color: 'var(--down-500)', fontWeight: 700 }}>Insufficient liquidity for this size</span>
+              ) : (
+                <>
+                  {([
+                    { label: 'Avg fill price', value: `${fmt(depthPreview.avgPrice)} USDC` },
+                    { label: 'Price impact',   value: `${depthPreview.priceImpact.toFixed(3)}%`, warn: depthPreview.priceImpact >= 1 },
+                    { label: 'Levels consumed', value: String(depthPreview.levelsConsumed) },
+                    { label: `Est. fee (${feeLabel})`, value: `${fmt(depthPreview.avgPrice * qtyNum * feeBps / BPS_DIVISOR)} USDC` },
+                  ] as { label: string; value: string; warn?: boolean }[]).map(row => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{row.label}</span>
+                      <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: row.warn ? 'var(--down-500)' : 'var(--text-secondary)', fontWeight: row.warn ? 700 : 400 }}>{row.value}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          ) : (
+            <span style={{ fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+              Market orders fill at best available price. Order reverts if price moves beyond slippage tolerance.
+            </span>
+          )}
         </div>
       )}
 

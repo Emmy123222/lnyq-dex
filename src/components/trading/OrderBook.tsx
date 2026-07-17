@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { orderBookService } from '../../services/orderBookService'
+import { orderBookService, type BookStatus } from '../../services/orderBookService'
 import type { OrderBook as OrderBookData, PriceLevel } from '../../types'
 
 // ── Constants / types ─────────────────────────────────────────────────────────
@@ -138,6 +138,38 @@ function LevelRow({ level, side, maxDepth, flash, onClick }: RowProps) {
   )
 }
 
+// ── Connection status pill ────────────────────────────────────────────────────
+
+const STATUS_LABEL: Record<BookStatus, string> = {
+  live:         'Live',
+  delayed:      'Delayed',
+  reconnecting: 'Reconnecting',
+  unavailable:  'Unavailable',
+}
+
+const STATUS_COLOR: Record<BookStatus, string> = {
+  live:         'var(--up-500)',
+  delayed:      '#F0A500',
+  reconnecting: '#F0A500',
+  unavailable:  'var(--down-500)',
+}
+
+function BookStatusPill({ status }: { status: BookStatus }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <span style={{
+        width: 5, height: 5, borderRadius: '50%',
+        background: STATUS_COLOR[status],
+        flexShrink: 0,
+        animation: status === 'live' ? 'obPulse 2s infinite' : 'none',
+      }} />
+      <span style={{ fontSize: 9, fontWeight: 700, color: STATUS_COLOR[status], letterSpacing: '0.04em' }}>
+        {STATUS_LABEL[status]}
+      </span>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface OrderBookProps {
@@ -151,12 +183,13 @@ export default function OrderBook({
   onPriceClick,
   maxRows = 12,
 }: OrderBookProps) {
-  const [book,      setBook]     = useState<OrderBookData | null>(null)
-  const [loading,   setLoading]  = useState(true)
-  const [view,      setView]     = useState<View>('both')
-  const [grouping,  setGrouping] = useState<Grouping>(0.01)
-  const [lastTrade, setLastTrade] = useState<{ price: number; dir: 'up' | 'down' | 'same' } | null>(null)
-  const [flashes,   setFlashes]  = useState<Map<string, FlashDir>>(new Map())
+  const [book,       setBook]      = useState<OrderBookData | null>(null)
+  const [loading,    setLoading]   = useState(true)
+  const [view,       setView]      = useState<View>('both')
+  const [grouping,   setGrouping]  = useState<Grouping>(0.01)
+  const [lastTrade,  setLastTrade] = useState<{ price: number; dir: 'up' | 'down' | 'same' } | null>(null)
+  const [flashes,    setFlashes]   = useState<Map<string, FlashDir>>(new Map())
+  const [bookStatus, setBookStatus] = useState<BookStatus>('reconnecting')
 
   // Track previous grouped sizes to compute per-bucket flash direction
   const prevGrouped = useRef<Map<string, number>>(new Map())
@@ -185,9 +218,11 @@ export default function OrderBook({
       }
     })
 
-    const unsubBook = orderBookService.subscribe(marketId, updated => {
-      if (!cancelled) setBook(updated)
-    })
+    const unsubBook = orderBookService.subscribe(
+      marketId,
+      updated => { if (!cancelled) setBook(updated) },
+      status  => { if (!cancelled) setBookStatus(status) },
+    )
 
     return () => { cancelled = true; unsubBook() }
   }, [marketId])
@@ -265,6 +300,7 @@ export default function OrderBook({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', userSelect: 'none' }}>
+      <style>{`@keyframes obPulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
 
       {/* ── Toolbar ── */}
       <div style={{
@@ -288,23 +324,26 @@ export default function OrderBook({
           ))}
         </div>
 
-        <select
-          value={grouping}
-          onChange={e => {
-            prevGrouped.current.clear()
-            setGrouping(Number(e.target.value) as Grouping)
-          }}
-          style={{
-            fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
-            background: 'var(--surface-2)', color: 'var(--text-secondary)',
-            border: '1px solid var(--border-subtle)', borderRadius: 4,
-            padding: '2px 4px', cursor: 'pointer', outline: 'none',
-          }}
-        >
-          {GROUPINGS.map(g => (
-            <option key={g} value={g}>{g.toFixed(2)}</option>
-          ))}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <BookStatusPill status={bookStatus} />
+          <select
+            value={grouping}
+            onChange={e => {
+              prevGrouped.current.clear()
+              setGrouping(Number(e.target.value) as Grouping)
+            }}
+            style={{
+              fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
+              background: 'var(--surface-2)', color: 'var(--text-secondary)',
+              border: '1px solid var(--border-subtle)', borderRadius: 4,
+              padding: '2px 4px', cursor: 'pointer', outline: 'none',
+            }}
+          >
+            {GROUPINGS.map(g => (
+              <option key={g} value={g}>{g.toFixed(2)}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* ── Column headers ── */}
@@ -444,3 +483,4 @@ function BidsIcon() {
     </svg>
   )
 }
+

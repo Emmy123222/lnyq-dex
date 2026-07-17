@@ -4,11 +4,10 @@
  * Steps map to Squid transaction lifecycle:
  *   Initiated → Source Confirmed → Bridge Processing → Destination Received → Complete
  *
- * In mock mode: auto-advances through steps with simulated delays.
- * In devnet mode: polls squidService.getStatus() with the real txHash.
+ * Requires a real txHash and squidService.getStatus() to track progress.
+ * No mock auto-advance — if the backend is not configured, shows integration unavailable.
  */
 
-import { useState, useEffect } from 'react'
 
 export type BridgeStep = 'initiated' | 'source' | 'bridge' | 'destination' | 'complete'
 
@@ -22,44 +21,36 @@ const STEPS: { id: BridgeStep; label: string; detail: string }[] = [
 
 const STEP_ORDER: BridgeStep[] = ['initiated', 'source', 'bridge', 'destination', 'complete']
 
-// Mock: auto-advance delays (ms)
-const MOCK_DELAYS: Record<BridgeStep, number> = {
-  initiated:   800,
-  source:      3000,
-  bridge:      6000,
-  destination: 2000,
-  complete:    1000,
-}
-
 interface Props {
   /** Source chain display name */
   sourceChain: string
   /** USDC amount being bridged */
   amount: string
-  /** Real Squid txHash (unused in mock mode) */
+  /** Real Squid txHash — required for live tracking */
   txHash?: string
   onComplete?: () => void
 }
 
-export default function BridgeStatusTracker({ sourceChain, amount, onComplete }: Props) {
-  const [currentStep, setCurrentStep] = useState<BridgeStep>('initiated')
-
-  useEffect(() => {
-    let cancelled = false
-    async function advance() {
-      for (const step of STEP_ORDER) {
-        if (cancelled) return
-        setCurrentStep(step)
-        await new Promise(r => setTimeout(r, MOCK_DELAYS[step]))
-      }
-      if (!cancelled) onComplete?.()
-    }
-    advance()
-    return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
-
+export default function BridgeStatusTracker({ sourceChain, amount, txHash }: Props) {
+  // No txHash means squidService hasn't provided a real transaction yet.
+  // Hold at 'initiated' — never auto-advance with fake delays.
+  const currentStep: BridgeStep = 'initiated'
   const currentIdx = STEP_ORDER.indexOf(currentStep)
-  const isComplete = currentStep === 'complete'
+  const isComplete = false
+
+  if (!txHash) {
+    return (
+      <div style={{ textAlign: 'center', padding: '32px 0' }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 8 }}>
+          Bridge integration unavailable
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-tertiary)', lineHeight: 1.6, maxWidth: 300, margin: '0 auto' }}>
+          Squid Router integration is not yet configured. Real bridge transactions require a
+          txHash from squidService. This feature will be available in Phase 3.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>

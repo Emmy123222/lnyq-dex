@@ -1,11 +1,15 @@
 /**
  * walletService — wallet connection adapter.
  *
- * Phase 1 primary chain: Solana Devnet.
- * Integration not yet wired — returns INTEGRATION_UNAVAILABLE.
+ * Phase 1 auth uses email + access code only. No wallet is connected or required.
+ * All methods return INTEGRATION_UNAVAILABLE until Phase 2 wallet integration ships.
  *
- * TODO: Integrate @solana/wallet-adapter-react for Solana Devnet.
- * TODO: Wire Privy / Dynamic / RainbowKit if EVM is the auth layer.
+ * Phase 2 plan: integrate @solana/wallet-adapter-react (Phantom / Backpack / Solflare)
+ * for Solana devnet wallet signing. Session tokens will be tied to wallet signatures
+ * instead of email-only session tokens.
+ *
+ * Do NOT call any walletService method in Phase 1 flows. Auth state is managed
+ * entirely by authService (email + sessionToken in sessionStorage).
  */
 
 import type { WalletInfo, ServiceResult } from '../types'

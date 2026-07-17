@@ -291,6 +291,23 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
         }
       }
 
+      // FOK pre-check: verify available liquidity before writing anything
+      if (req.timeInForce === 'FOK') {
+        const sumResult = await tx.order.aggregate({
+          where: {
+            marketId: req.marketId,
+            side:     req.side === 'buy' ? 'SELL' : 'BUY',
+            status:   { in: ['OPEN', 'PARTIALLY_FILLED'] },
+            type:     'LIMIT',
+            userId:   { not: req.userId },
+            ...(req.side === 'buy' ? { price: { lte: price } } : { price: { gte: price } }),
+          },
+          _sum: { remainingQuantity: true },
+        })
+        const available = sumResult._sum.remainingQuantity ?? 0
+        if (available < req.quantity) return { error: 'FOK: insufficient liquidity' }
+      }
+
       const order = await tx.order.create({
         data: {
           userId:            req.userId,
@@ -332,6 +349,8 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
 
       for (const resting of opposite) {
         if (remainingQty <= 0) break
+        // Self-trade prevention: never match an order against itself
+        if (resting.userId === req.userId) continue
         if (req.type === 'limit') {
           if (req.side === 'buy'  && Number(resting.price) > price) break
           if (req.side === 'sell' && Number(resting.price) < price) break
@@ -500,11 +519,12 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
         },
       })
 
-      broadcastBookAsync(req.marketId)
+      // Defer DB-read broadcasts to after transaction commits
+      setImmediate(() => broadcastBookAsync(req.marketId))
 
       if (!isMMBot) {
         broadcast({ type: 'order', userId: req.userId, order: prismaOrderToWs(updatedOrder) })
-        broadcastPortfolioAsync(req.userId)
+        setImmediate(() => broadcastPortfolioAsync(req.userId))
       }
 
       return {
@@ -570,11 +590,11 @@ export async function cancelOrder(orderId: string, userId: string): Promise<unkn
         data:  { status: 'CANCELLED', updatedAt: new Date() },
       })
 
-      broadcastBookAsync(order.marketId)
+      setImmediate(() => broadcastBookAsync(order.marketId))
 
       if (!order.isMarketMaker) {
         broadcast({ type: 'order', userId: order.userId, order: prismaOrderToWs(cancelled) })
-        broadcastPortfolioAsync(order.userId)
+        setImmediate(() => broadcastPortfolioAsync(order.userId))
       }
 
       return cancelled

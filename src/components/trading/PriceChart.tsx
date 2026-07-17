@@ -1,281 +1,355 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+/**
+ * PriceChart — lightweight-charts canvas renderer.
+ *
+ * Accepts processed props from MarketChartCard. Does NOT fetch data.
+ * Handles: candles, area, line modes; volume; bid/ask/midpoint overlays; tooltip.
+ */
+
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
-  createChart,
-  CandlestickSeries,
-  HistogramSeries,
-  CrosshairMode,
+  createChart, CandlestickSeries, AreaSeries, LineSeries, HistogramSeries, CrosshairMode,
   type IChartApi,
   type ISeriesApi,
   type CandlestickData,
   type HistogramData,
+  type LineData,
+  type AreaData,
+  type IPriceLine,
   type Time,
 } from 'lightweight-charts'
-import { chartService } from '../../services/chartService'
 import type { Candle } from '../../types'
-import type { CandleInterval } from '../../services/chartService'
+import type { ChartMode, ChartIndicators, OrderBookTop, ChartDataStatus, ChartTooltipData } from '../../types/chart'
+import { ChartTooltip  } from './ChartTooltip'
+import { ChartEmptyState } from './ChartEmptyState'
+import { ChartErrorState } from './ChartErrorState'
 
-const TIMEFRAMES: CandleInterval[] = ['1m', '5m', '15m', '1h', '4h', '1D']
+// ── Converters ──────────────────────────────────────────────────────────────────
 
-function candleToBar(c: Candle): CandlestickData<Time> {
-  return {
-    time:  Math.floor(c.time / 1000) as Time,
-    open:  c.open,
-    high:  c.high,
-    low:   c.low,
-    close: c.close,
-  }
+function toBar(c: Candle): CandlestickData<Time> {
+  return { time: Math.floor(c.time / 1000) as Time, open: c.open, high: c.high, low: c.low, close: c.close }
 }
-
-function candleToVol(c: Candle): HistogramData<Time> {
+function toValue(c: Candle): LineData<Time> {
+  return { time: Math.floor(c.time / 1000) as Time, value: c.close }
+}
+function toAreaValue(c: Candle): AreaData<Time> {
+  return { time: Math.floor(c.time / 1000) as Time, value: c.close }
+}
+function toVol(c: Candle): HistogramData<Time> {
   return {
     time:  Math.floor(c.time / 1000) as Time,
     value: c.volume,
-    color: c.close >= c.open ? 'rgba(46,189,133,0.28)' : 'rgba(246,70,93,0.22)',
+    color: c.close >= c.open ? 'rgba(0,196,176,0.18)' : 'rgba(255,70,102,0.15)',
   }
 }
 
-function fmt2(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+function formatTime(unixSec: number): string {
+  return new Date(unixSec * 1000).toLocaleString('en-US', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
+  })
 }
 
-interface PriceChartProps {
-  marketId: string
+function sortedCandles(candles: Candle[]) {
+  return [...candles].sort((a, b) => a.time - b.time)
 }
 
-export default function PriceChart({ marketId }: PriceChartProps) {
-  const [tf, setTf]              = useState<CandleInterval>('1h')
-  const [loading, setLoading]    = useState(true)
-  const [error, setError]        = useState<string | null>(null)
-  const [empty, setEmpty]        = useState(false)
-  const [lastCandle, setLastCandle] = useState<Candle | null>(null)
+// ── Component ──────────────────────────────────────────────────────────────────
 
+interface Props {
+  candles:       Candle[]
+  mode:          ChartMode
+  indicators:    ChartIndicators
+  orderBookTop:  OrderBookTop
+  status:        ChartDataStatus
+  error:         string | null
+  onRetry:       () => void
+}
+
+export default function PriceChart({ candles, mode, indicators, orderBookTop, status, error, onRetry }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef     = useRef<IChartApi | null>(null)
-  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const volSeriesRef    = useRef<ISeriesApi<'Histogram'> | null>(null)
 
-  // Create chart once
+  const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const areaSeriesRef   = useRef<ISeriesApi<'Area'>         | null>(null)
+  const lineSeriesRef   = useRef<ISeriesApi<'Line'>         | null>(null)
+  const volSeriesRef    = useRef<ISeriesApi<'Histogram'>    | null>(null)
+
+  const midlineRef = useRef<IPriceLine | null>(null)
+  const bidlineRef = useRef<IPriceLine | null>(null)
+  const asklineRef = useRef<IPriceLine | null>(null)
+
+  const [tooltip,       setTooltip]       = useState<ChartTooltipData | null>(null)
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 })
+  const [chartReady,    setChartReady]    = useState(false)
+
+  // ── Chart creation (once) ───────────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current) return
 
     const chart = createChart(containerRef.current, {
       layout: {
-        background:  { color: 'transparent' },
-        textColor:   '#9B9BAA',
-        fontFamily:  '"IBM Plex Mono", monospace',
-        fontSize:    11,
+        background: { color: 'transparent' },
+        textColor:  '#6b6b78',
+        fontFamily: '"IBM Plex Mono", monospace',
+        fontSize:   11,
       },
       grid: {
-        vertLines: { color: 'rgba(255,255,255,0.04)' },
-        horzLines: { color: 'rgba(255,255,255,0.04)' },
+        vertLines: { color: 'rgba(255,255,255,0.025)' },
+        horzLines: { color: 'rgba(255,255,255,0.025)' },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
-        vertLine: { color: 'rgba(160,81,252,0.5)', labelBackgroundColor: '#1A1A2E' },
-        horzLine: { color: 'rgba(160,81,252,0.5)', labelBackgroundColor: '#1A1A2E' },
+        vertLine: { color: 'rgba(160,81,252,0.45)', labelBackgroundColor: '#1a1a2e', width: 1, style: 2 as const },
+        horzLine: { color: 'rgba(160,81,252,0.45)', labelBackgroundColor: '#1a1a2e', width: 1, style: 2 as const },
       },
       rightPriceScale: {
-        borderColor: 'rgba(255,255,255,0.08)',
-        textColor:   '#6B6B78',
+        borderColor: 'rgba(255,255,255,0.06)',
+        textColor:   '#6b6b78',
+        scaleMargins: { top: 0.04, bottom: 0.18 },
       },
       timeScale: {
-        borderColor:    'rgba(255,255,255,0.08)',
+        borderColor:    'rgba(255,255,255,0.06)',
         timeVisible:    true,
         secondsVisible: false,
         rightOffset:    6,
-        barSpacing:     8,
-        minBarSpacing:  3,
+        barSpacing:     6,
+        minBarSpacing:  2,
       },
-      handleScroll:  true,
-      handleScale:   true,
+      handleScroll: true,
+      handleScale:  true,
     })
 
-    const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor:          '#2EBD85',
-      downColor:        '#F6465D',
-      borderUpColor:    '#2EBD85',
-      borderDownColor:  '#F6465D',
-      wickUpColor:      '#2EBD85',
-      wickDownColor:    '#F6465D',
-      priceLineVisible: true,
-      priceLineColor:   'rgba(160,81,252,0.7)',
-      lastValueVisible: true,
-    })
-
-    // Volume pane — 18% height, no price scale overlap
     const volSeries = chart.addSeries(HistogramSeries, {
       priceFormat:      { type: 'volume' },
       priceScaleId:     'vol',
       lastValueVisible: false,
       priceLineVisible: false,
     })
-    chart.priceScale('vol').applyOptions({
-      scaleMargins: { top: 0.82, bottom: 0 },
-      visible: false,
-    })
-    chart.priceScale('right').applyOptions({
-      scaleMargins: { top: 0.02, bottom: 0.20 },
-    })
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.86, bottom: 0 }, visible: false })
 
-    chartRef.current      = chart
-    candleSeriesRef.current = candleSeries
-    volSeriesRef.current    = volSeries
+    chartRef.current     = chart
+    volSeriesRef.current = volSeries
 
-    const obs = new ResizeObserver(() => {
-      if (containerRef.current) {
-        chart.resize(containerRef.current.clientWidth, containerRef.current.clientHeight)
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const { width, height } = e.contentRect
+        chart.resize(width, height)
+        setContainerSize({ w: width, h: height })
       }
     })
     obs.observe(containerRef.current)
+
+    chart.subscribeCrosshairMove(param => {
+      if (!param.point || !param.time) { setTooltip(null); return }
+
+      // Extract OHLCV from whichever series is active
+      const cData = candleSeriesRef.current
+        ? (param.seriesData.get(candleSeriesRef.current) as CandlestickData<Time> | undefined)
+        : undefined
+      const vData = (areaSeriesRef.current
+        ? param.seriesData.get(areaSeriesRef.current)
+        : lineSeriesRef.current
+        ? param.seriesData.get(lineSeriesRef.current)
+        : undefined) as unknown as { value: number } | undefined
+      const volData = volSeriesRef.current
+        ? (param.seriesData.get(volSeriesRef.current) as HistogramData<Time> | undefined)
+        : undefined
+
+      const close = cData ? cData.close : vData?.value ?? 0
+
+      setTooltip({
+        time:   formatTime(Number(param.time)),
+        open:   cData ? cData.open  : close,
+        high:   cData ? cData.high  : close,
+        low:    cData ? cData.low   : close,
+        close,
+        volume: volData?.value ?? 0,
+        x:      param.point.x,
+        y:      param.point.y,
+      })
+    })
+
+    setChartReady(true)
 
     return () => {
       obs.disconnect()
       chart.remove()
       chartRef.current        = null
-      candleSeriesRef.current = null
       volSeriesRef.current    = null
+      candleSeriesRef.current = null
+      areaSeriesRef.current   = null
+      lineSeriesRef.current   = null
+      setChartReady(false)
+      setTooltip(null)
     }
   }, [])
 
-  // Load candles on market/interval change
-  const loadCandles = useCallback(async () => {
-    if (!candleSeriesRef.current || !volSeriesRef.current || !marketId) return
-    setLoading(true)
-    setError(null)
-    setEmpty(false)
+  // ── Series + data (reruns on mode or candles change) ───────────────────────
+  const modeRef = useRef<ChartMode | null>(null)
 
-    const res = await chartService.getCandles(marketId, tf, 300)
-    if (!res.ok) {
-      setError(res.error.code === 'INTEGRATION_UNAVAILABLE'
-        ? 'Backend not configured.'
-        : res.error.message)
-      setLoading(false)
-      return
-    }
-
-    const candles = res.data
-    if (candles.length === 0) {
-      setEmpty(true)
-      setLoading(false)
-      return
-    }
-
-    candleSeriesRef.current.setData(candles.map(candleToBar))
-    volSeriesRef.current.setData(candles.map(candleToVol))
-    setLastCandle(candles[candles.length - 1])
-    chartRef.current?.timeScale().fitContent()
-    setLoading(false)
-  }, [marketId, tf])
-
-  useEffect(() => { loadCandles() }, [loadCandles])
-
-  // Subscribe to live updates
   useEffect(() => {
-    return chartService.subscribe(marketId, tf, (incoming: Candle) => {
-      const bar = candleToBar(incoming)
-      const vol = candleToVol(incoming)
-      candleSeriesRef.current?.update(bar)
-      volSeriesRef.current?.update(vol)
-      setLastCandle(incoming)
-    })
-  }, [marketId, tf])
+    if (!chartReady || !chartRef.current) return
+    const chart = chartRef.current
 
-  // Compute header stats from the last loaded candle vs first
-  const changePct = lastCandle ? ((lastCandle.close - lastCandle.open) / lastCandle.open) * 100 : 0
-  const isUp = changePct >= 0
+    // Recreate price series when mode changes
+    if (modeRef.current !== mode) {
+      modeRef.current = mode
+
+      if (candleSeriesRef.current) { try { chart.removeSeries(candleSeriesRef.current) } catch { /* removed */ } candleSeriesRef.current = null }
+      if (areaSeriesRef.current)   { try { chart.removeSeries(areaSeriesRef.current)   } catch { /* removed */ } areaSeriesRef.current   = null }
+      if (lineSeriesRef.current)   { try { chart.removeSeries(lineSeriesRef.current)   } catch { /* removed */ } lineSeriesRef.current   = null }
+
+      midlineRef.current = null
+      bidlineRef.current = null
+      asklineRef.current = null
+
+      if (mode === 'candles') {
+        candleSeriesRef.current = chart.addSeries(CandlestickSeries, {
+          upColor:          '#00c4b0',
+          downColor:        '#ff4666',
+          borderUpColor:    '#00c4b0',
+          borderDownColor:  '#ff4666',
+          wickUpColor:      '#00c4b0',
+          wickDownColor:    '#ff4666',
+          priceLineColor:   'rgba(160,81,252,0.6)',
+          lastValueVisible: true,
+        })
+      } else if (mode === 'area') {
+        areaSeriesRef.current = chart.addSeries(AreaSeries, {
+          lineColor:               '#00c4b0',
+          topColor:                'rgba(0,196,176,0.26)',
+          bottomColor:             'rgba(0,196,176,0.00)',
+          lineWidth:               2,
+          priceLineColor:          'rgba(0,196,176,0.6)',
+          lastValueVisible:        true,
+          crosshairMarkerVisible:  true,
+          crosshairMarkerRadius:   4,
+          crosshairMarkerBorderColor: '#00c4b0',
+          crosshairMarkerBackgroundColor: '#00c4b0',
+        })
+      } else {
+        lineSeriesRef.current = chart.addSeries(LineSeries, {
+          color:                   '#00c4b0',
+          lineWidth:               2,
+          priceLineColor:          'rgba(0,196,176,0.6)',
+          lastValueVisible:        true,
+          crosshairMarkerVisible:  true,
+          crosshairMarkerRadius:   4,
+          crosshairMarkerBorderColor: '#00c4b0',
+          crosshairMarkerBackgroundColor: '#00c4b0',
+        })
+      }
+    }
+
+    if (candles.length === 0) return
+
+    const sorted = sortedCandles(candles)
+
+    if (candleSeriesRef.current) candleSeriesRef.current.setData(sorted.map(toBar))
+    else if (areaSeriesRef.current) areaSeriesRef.current.setData(sorted.map(toAreaValue))
+    else if (lineSeriesRef.current) lineSeriesRef.current.setData(sorted.map(toValue))
+
+    if (volSeriesRef.current) {
+      volSeriesRef.current.setData(indicators.volume ? sorted.map(toVol) : [])
+    }
+
+    chart.timeScale().fitContent()
+  }, [chartReady, mode, candles, indicators.volume])
+
+  // ── Overlay: midpoint price line ─────────────────────────────────────────────
+  const getActiveSeries = useCallback(() =>
+    (candleSeriesRef.current ?? areaSeriesRef.current ?? lineSeriesRef.current) as ISeriesApi<'Candlestick'> | ISeriesApi<'Area'> | ISeriesApi<'Line'> | null,
+  [])
+
+  useEffect(() => {
+    const series = getActiveSeries()
+    if (!series) return
+
+    if (midlineRef.current) {
+      try { (series as ISeriesApi<'Candlestick'>).removePriceLine(midlineRef.current) } catch { /* ok */ }
+      midlineRef.current = null
+    }
+
+    if (indicators.midpoint && orderBookTop.midpoint) {
+      const mid = parseFloat(orderBookTop.midpoint)
+      if (mid > 0) {
+        midlineRef.current = (series as ISeriesApi<'Candlestick'>).createPriceLine({
+          price: mid, color: 'rgba(160,81,252,0.7)', lineWidth: 1, lineStyle: 2 as const,
+          axisLabelVisible: false, title: 'Mid',
+        })
+      }
+    }
+  }, [indicators.midpoint, orderBookTop.midpoint, getActiveSeries])
+
+  // ── Overlay: bid / ask price lines ──────────────────────────────────────────
+  useEffect(() => {
+    const series = getActiveSeries()
+    if (!series) return
+    const s = series as ISeriesApi<'Candlestick'>
+
+    if (bidlineRef.current) { try { s.removePriceLine(bidlineRef.current) } catch { /* ok */ } bidlineRef.current = null }
+    if (asklineRef.current) { try { s.removePriceLine(asklineRef.current) } catch { /* ok */ } asklineRef.current = null }
+
+    if (indicators.bidAsk) {
+      if (orderBookTop.bestBid) {
+        const bid = parseFloat(orderBookTop.bestBid)
+        if (bid > 0) {
+          bidlineRef.current = s.createPriceLine({
+            price: bid, color: 'rgba(0,196,176,0.65)', lineWidth: 1, lineStyle: 2 as const,
+            axisLabelVisible: false, title: 'Bid',
+          })
+        }
+      }
+      if (orderBookTop.bestAsk) {
+        const ask = parseFloat(orderBookTop.bestAsk)
+        if (ask > 0) {
+          asklineRef.current = s.createPriceLine({
+            price: ask, color: 'rgba(255,70,102,0.65)', lineWidth: 1, lineStyle: 2 as const,
+            axisLabelVisible: false, title: 'Ask',
+          })
+        }
+      }
+    }
+  }, [indicators.bidAsk, orderBookTop.bestBid, orderBookTop.bestAsk, getActiveSeries])
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const showOverlay = status === 'empty' || status === 'error' || status === 'unavailable'
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div style={{
-        height: 46, flexShrink: 0, display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', padding: '0 14px',
-        borderBottom: '1px solid var(--border-subtle)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-          {lastCandle ? (
-            <>
-              <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {fmt2(lastCandle.close)}
-              </span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: isUp ? 'var(--up-500)' : 'var(--down-500)' }}>
-                {isUp ? '+' : ''}{changePct.toFixed(2)}%
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>USDC</span>
-            </>
-          ) : (
-            <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>—</span>
-          )}
-        </div>
+    <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
 
-        {/* Timeframe pills */}
+      {status === 'loading' && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 2,
-          background: 'var(--surface-2)', border: '1px solid var(--border-subtle)',
-          borderRadius: 6, padding: 3,
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'var(--surface-1)', zIndex: 10,
         }}>
-          {TIMEFRAMES.map(t => (
-            <button
-              key={t}
-              onClick={() => setTf(t)}
-              style={{
-                padding: '3px 9px', borderRadius: 4, fontSize: 11, fontWeight: 700,
-                cursor: 'pointer', border: 'none', transition: 'all 100ms',
-                background: tf === t ? 'var(--accent)' : 'transparent',
-                color: tf === t ? '#fff' : 'var(--text-tertiary)',
-              }}
-            >
-              {t}
-            </button>
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 18, height: 18, borderRadius: '50%',
+              border: '2px solid rgba(255,255,255,0.08)',
+              borderTop: '2px solid var(--chart-up, #00c4b0)',
+              animation: 'chartSpin 0.7s linear infinite',
+            }} />
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Loading chart…</span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Chart container */}
-      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {status === 'empty' && <ChartEmptyState />}
 
-        {loading && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex',
-            alignItems: 'center', justifyContent: 'center',
-            background: 'var(--surface-1)', zIndex: 10,
-          }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <div style={{
-                width: 20, height: 20, borderRadius: '50%',
-                border: '2px solid var(--border-subtle)',
-                borderTop: '2px solid var(--accent)',
-                animation: 'spin 0.8s linear infinite',
-              }} />
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Loading chart…</span>
-            </div>
-          </div>
-        )}
+      {(status === 'error' || status === 'unavailable') && (
+        <ChartErrorState message={error ?? 'Backend not configured.'} onRetry={onRetry} />
+      )}
 
-        {empty && !loading && !error && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex',
-            alignItems: 'center', justifyContent: 'center', zIndex: 10,
-          }}>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>No trades yet</span>
-          </div>
-        )}
-
-        {error && !loading && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 10,
-          }}>
-            <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{error}</span>
-            <button onClick={loadCandles} style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
-          </div>
-        )}
-      </div>
-
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-      `}</style>
+      {!showOverlay && status !== 'loading' && (
+        <ChartTooltip
+          data={tooltip}
+          containerWidth={containerSize.w}
+          containerHeight={containerSize.h}
+        />
+      )}
     </div>
   )
 }

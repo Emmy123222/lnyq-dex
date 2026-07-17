@@ -9,7 +9,9 @@
 import type { OrderBook, PriceLevel, PublicTrade, ServiceResult } from '../types'
 import { ENV } from '../config/env'
 import { apiFetch } from './types'
-import { simClient } from './simClient'
+import { simClient, type WsStatus } from './simClient'
+
+export type BookStatus = 'live' | 'delayed' | 'reconnecting' | 'unavailable'
 
 // ── Converters ────────────────────────────────────────────────────────────────
 
@@ -99,9 +101,18 @@ export const orderBookService = {
   subscribe(
     marketId: string,
     onUpdate: (book: OrderBook) => void,
+    onStatus?: (status: BookStatus) => void,
   ): () => void {
     if (ENV.IS_LOCAL_API) {
-      return simClient.subscribeOrderBook(marketId, (msg) => {
+      const wsStatusMap: Record<WsStatus, BookStatus> = {
+        connecting:   'reconnecting',
+        live:         'live',
+        reconnecting: 'reconnecting',
+        unavailable:  'unavailable',
+      }
+      const unsubStatus = simClient.onStatus(s => onStatus?.(wsStatusMap[s]))
+
+      const unsubBook = simClient.subscribeOrderBook(marketId, (msg) => {
         const m = msg as {
           marketId: string
           bids: [number, number][]
@@ -111,12 +122,16 @@ export const orderBookService = {
         }
         onUpdate(wsMsgToBook(m.marketId, m.bids, m.asks, m.spread, m.midpoint))
       })
+
+      return () => { unsubStatus(); unsubBook() }
     }
 
-    // devnet/staging/production — poll REST every 3s until WS is wired
+    // devnet/staging/production — REST poll (no WS yet); always Delayed
+    onStatus?.('delayed')
     const id = setInterval(async () => {
       const res = await orderBookService.getOrderBook(marketId)
       if (res.ok) onUpdate(res.data)
+      else onStatus?.('unavailable')
     }, 3000)
     return () => clearInterval(id)
   },

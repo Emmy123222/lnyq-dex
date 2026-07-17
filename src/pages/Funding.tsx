@@ -18,7 +18,7 @@ export default function Funding() {
             During Phase 1 testnet, USDC is distributed via the drip faucet on signup. No real transfers take place.
           </div>
           <div style={{ padding: '12px 16px', background: 'rgba(240,165,0,0.08)', border: '1px solid rgba(240,165,0,0.25)', borderRadius: 8, fontSize: 12, color: '#F0A500', lineHeight: 1.6, textAlign: 'left' }}>
-            <strong>Phase 1 testnet only.</strong> All balances are simulated. No real USDC is at risk.
+            <strong>Phase 1 testnet only.</strong> Balances are testnet-only and not backed by real USDC. No real funds are at risk.
           </div>
         </div>
       </div>

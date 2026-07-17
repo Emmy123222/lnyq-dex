@@ -291,6 +291,29 @@ export async function startMM() {
     }
   }
 
+  // GTD expiry worker — cancel expired GTD orders every 60s
+  setInterval(async () => {
+    try {
+      const expired = await prisma.order.findMany({
+        where: {
+          timeInForce: 'GTD',
+          status:      { in: ['OPEN', 'PARTIALLY_FILLED'] },
+          expiresAt:   { lte: new Date() },
+        },
+        select: { id: true, userId: true },
+        take: 200,
+      })
+      for (const { id, userId } of expired) {
+        await cancelOrder(id, userId)
+      }
+      if (expired.length > 0) {
+        console.log(`[MM] GTD expiry: cancelled ${expired.length} order(s)`)
+      }
+    } catch (err) {
+      console.error('[MM] GTD expiry worker error:', err)
+    }
+  }, 60_000)
+
   const spotCount = markets.filter(m => m.type === 'spot').length
   const perpCount = markets.filter(m => m.type === 'perp').length
   console.log(`[MM] Started: ${spotCount} spot, ${perpCount} perp market(s)`)

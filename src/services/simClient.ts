@@ -16,6 +16,8 @@ import { ENV } from '../config/env'
 
 type MsgCallback = (msg: Record<string, unknown>) => void
 
+export type WsStatus = 'connecting' | 'live' | 'reconnecting' | 'unavailable'
+
 interface Subscriber {
   channelKey: string
   subscribeMsg: Record<string, string>
@@ -26,7 +28,14 @@ let ws: WebSocket | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 let pingTimer: ReturnType<typeof setInterval> | null = null
 let attempt = 0
+let currentStatus: WsStatus = 'connecting'
 const subs = new Set<Subscriber>()
+const statusListeners = new Set<(s: WsStatus) => void>()
+
+function notifyStatus(s: WsStatus) {
+  currentStatus = s
+  for (const fn of statusListeners) fn(s)
+}
 
 function deriveChannelKey(msg: Record<string, unknown>): string {
   switch (msg.type) {
@@ -51,9 +60,11 @@ function connect() {
 
   ws = new WebSocket(ENV.WS_URL)
 
+  notifyStatus('connecting')
+
   ws.onopen = () => {
     attempt = 0
-    // Re-subscribe all active subscribers
+    notifyStatus('live')
     for (const sub of subs) {
       sendRaw({ type: 'subscribe', ...sub.subscribeMsg })
     }
@@ -81,7 +92,11 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if (attempt >= 10 || subs.size === 0) return
+  if (attempt >= 10 || subs.size === 0) {
+    notifyStatus('unavailable')
+    return
+  }
+  notifyStatus('reconnecting')
   const delay = Math.min(1_000 * 2 ** attempt, 30_000)
   reconnectTimer = setTimeout(() => { attempt++; connect() }, delay)
 }
@@ -133,4 +148,12 @@ export const simClient = {
   subscribePortfolio(userId: string, cb: MsgCallback) {
     return simClient.subscribe(`portfolio:${userId}`, { channel: 'portfolio', userId }, cb)
   },
+
+  onStatus(fn: (s: WsStatus) => void): () => void {
+    statusListeners.add(fn)
+    fn(currentStatus)
+    return () => statusListeners.delete(fn)
+  },
+
+  getStatus(): WsStatus { return currentStatus },
 }

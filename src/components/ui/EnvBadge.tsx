@@ -9,7 +9,7 @@ export default function EnvBadge() {
   if (ENV.IS_PRODUCTION) return null
 
   const label = ENV.IS_LOCAL_API
-    ? 'Local API'
+    ? 'CLOB SIM'
     : ENV.IS_DEVNET_API
       ? 'Devnet API'
       : ENV.IS_STAGING
@@ -17,15 +17,15 @@ export default function EnvBadge() {
         : 'Unknown'
 
   const color = ENV.IS_LOCAL_API
-    ? '#7B61FF'   // purple — local backend, real CLOB
+    ? '#7B61FF'   // purple — local CLOB simulation
     : ENV.IS_DEVNET_API
-      ? '#F0A500'   // amber — real devnet API
+      ? '#F0A500'   // amber — devnet API
       : '#2EBD85'   // green — staging
 
   const title = ENV.IS_LOCAL_API
-    ? 'Local API — real CLOB matching, PostgreSQL, no onchain settlement'
+    ? 'Local CLOB simulation API — PostgreSQL-backed matching engine, no on-chain settlement'
     : ENV.IS_DEVNET_API
-      ? 'Devnet API — connected to test backend'
+      ? 'Devnet API — connected to test backend, no on-chain settlement'
       : 'Staging API — connected to staging environment'
 
   return (
