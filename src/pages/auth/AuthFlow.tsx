@@ -497,12 +497,18 @@ function WalletCreationStep({
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: 0 }}>Linking wallet to account…</p>
       )}
 
-      <button
-        onClick={onSkip}
-        style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
-      >
-        Skip — trading without a wallet uses local simulation only
-      </button>
+      {ENV.IS_LOCAL_API ? (
+        <button
+          onClick={onSkip}
+          style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+        >
+          Skip — trading without a wallet uses local simulation only
+        </button>
+      ) : (
+        <p style={{ fontSize: 12, color: 'var(--warn)', margin: 0 }}>
+          A wallet is required for testnet and mainnet trading.
+        </p>
+      )}
     </div>
   )
 }

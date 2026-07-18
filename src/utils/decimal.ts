@@ -44,6 +44,66 @@ export function fmtChange(value: string | number): string {
   return `${sign}${n.toFixed(2)}%`
 }
 
+// ── Fixed-point string arithmetic (order-critical paths only) ────────────────
+//
+// Use these instead of parseFloat/Number when values are sent to the matching
+// engine. All functions keep values as strings to avoid IEEE-754 precision loss.
+
+function decParts(s: string): [bigint, number] {
+  const clean = s.trim().replace(/^-/, '')
+  const neg   = s.trim().startsWith('-')
+  const dot   = clean.indexOf('.')
+  const decimals = dot === -1 ? 0 : clean.length - dot - 1
+  const int   = BigInt(clean.replace('.', ''))
+  return [neg ? -int : int, decimals]
+}
+
+function formatFixed(int: bigint, decimals: number): string {
+  if (decimals === 0) return int.toString()
+  const neg = int < 0n
+  const abs = neg ? -int : int
+  const s   = abs.toString().padStart(decimals + 1, '0')
+  const whole = s.slice(0, s.length - decimals) || '0'
+  const frac  = s.slice(s.length - decimals).replace(/0+$/, '')
+  const result = frac ? `${whole}.${frac}` : whole
+  return neg ? `-${result}` : result
+}
+
+/**
+ * Add two decimal strings without IEEE-754 precision loss.
+ * Safe for price/quantity totals in order-submission paths.
+ */
+export function addDecStr(a: string, b: string): string {
+  const [ai, ad] = decParts(a)
+  const [bi, bd] = decParts(b)
+  const decimals  = Math.max(ad, bd)
+  const scale     = (d: number) => 10n ** BigInt(decimals - d)
+  return formatFixed(ai * scale(ad) + bi * scale(bd), decimals)
+}
+
+/**
+ * Multiply two decimal strings without IEEE-754 precision loss.
+ * Safe for price × quantity total calculations before order submission.
+ */
+export function mulDecStr(a: string, b: string): string {
+  const [ai, ad] = decParts(a)
+  const [bi, bd] = decParts(b)
+  return formatFixed(ai * bi, ad + bd)
+}
+
+/**
+ * Compare two decimal strings.
+ * Returns -1 if a < b, 0 if equal, 1 if a > b.
+ */
+export function cmpDecStr(a: string, b: string): -1 | 0 | 1 {
+  const [ai, ad] = decParts(a)
+  const [bi, bd] = decParts(b)
+  const decimals  = Math.max(ad, bd)
+  const scale     = (d: number) => 10n ** BigInt(decimals - d)
+  const diff      = ai * scale(ad) - bi * scale(bd)
+  return diff < 0n ? -1 : diff > 0n ? 1 : 0
+}
+
 // ── Submission validators (string → string, no number conversion) ─────────────
 
 /** Regex patterns for price and quantity strings accepted by the matching engine */

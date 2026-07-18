@@ -1,6 +1,6 @@
 # Responsive Design Audit
 
-**Date:** 2026-07-18
+**Date:** 2026-07-18 (updated)
 
 ---
 
@@ -75,7 +75,7 @@
   Order entry = bottom sheet
 ```
 
-**Current gap:** TradePage currently uses fixed desktop grid with no mobile tab switching. Mobile users may see horizontal overflow.
+**Current status (updated 2026-07-18):** Mobile layout fully restructured. Now has: compact market header (56px) → 3 content tabs (Chart / Order Book / Trades) → flex-fill content area → 196px orders panel (Open Orders / Order History) → sticky Buy/Sell CTA buttons (50px). Order entry opens as a bottom sheet modal. Desktop layout unchanged (`hidden lg:flex`). Verified at 375px width. P1 gap resolved.
 
 ---
 
@@ -93,7 +93,7 @@
 - Positions/Orders as cards (not grid rows)
 - Large tap targets on Cancel/Close buttons
 
-**Current gap:** Uses `flex` layout with `flex: '0 0 360px'` which breaks on narrow screens. Needs `@media (max-width: 768px)` override.
+**Current status (updated 2026-07-18):** `useIsMobile()` hook used to switch `flexDirection` from `row` → `column` on mobile. Equity card goes full-width, chart panel stacks below. Order/history table grids wrapped in `overflow-x: auto` container with `minWidth` so columns don't collapse. Tab bar also `overflow-x: auto` so all tab labels remain tappable on 375px.
 
 ---
 
@@ -170,11 +170,12 @@ All replaced with simpler layouts:
 
 | Priority | Gap | Files Affected | Status |
 |----------|-----|----------------|--------|
-| P1 | TradePage has no mobile tab system for Order Book / Trades / Entry | `TradePage.tsx` | Open |
+| ~~P1~~ | ~~TradePage has no mobile tab system~~ | `TradePage.tsx` | **Done** — 3-tab layout + orders panel + Buy/Sell CTAs |
 | ~~P1~~ | ~~Bottom navigation bar missing on mobile~~ | `AppShell.tsx`, `MobileNav.tsx` | **Done** — `useIsMobile` + conditional render |
-| P2 | Portfolio equity+chart row doesn't stack on narrow screens (`flex: '0 0 360px'`) | `Portfolio.tsx` | Open |
-| P2 | Stat strips overflow horizontally on mobile | `TradePage.tsx`, `MarketDetail.tsx` | Open |
+| ~~P2~~ | ~~Portfolio equity row doesn't stack on mobile~~ | `Portfolio.tsx` | **Done** — `useIsMobile` flex-direction switch |
+| ~~P2~~ | ~~Order/history grids overflow on mobile~~ | `Portfolio.tsx` | **Done** — `overflow-x: auto` wrapper + `minWidth` |
+| ~~P3~~ | ~~Order entry should open as bottom sheet~~ | `TradePage.tsx` | **Done** — bottom sheet with drag handle |
+| P2 | Stat strips overflow on mobile (TradePage desktop strip hidden, MarketDetail stat row) | `MarketDetail.tsx` | Open |
 | P2 | Alerts side-by-side panels don't stack on mobile | `Alerts.tsx` | Open |
 | P2 | Rewards side-by-side panels don't stack on mobile | `Rewards.tsx` | Open |
-| P3 | Order entry should open as bottom sheet on mobile | `TradePage.tsx` | Open |
-| P3 | Table rows should convert to cards on mobile | `Portfolio.tsx`, `TradePage.tsx` | Open |
+| P3 | Portfolio table rows: cards layout on mobile (currently horizontal-scrolling grid) | `Portfolio.tsx` | Open |

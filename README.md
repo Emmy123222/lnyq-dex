@@ -1,6 +1,6 @@
 # LNYQ DEX
 
-A non-custodial spot CLOB exchange built on Solana, in active development toward Phase 1 launch.
+A spot CLOB exchange developing toward non-custodial Solana settlement, currently in Phase 1 (local CLOB simulation).
 
 ## Stack
 

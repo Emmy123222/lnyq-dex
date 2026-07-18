@@ -239,18 +239,19 @@ function PositionsPanel({ market }: { market: Market | null }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-type MobileTab = 'chart' | 'book' | 'trades' | 'order'
+type MobileContentTab = 'chart' | 'book' | 'trades'
 
 export default function TradePage() {
-  const [markets,       setMarkets]       = useState<Market[]>([])
-  const [activeMarket,  setActiveMarket]  = useState<Market | null>(null)
-  const [ticker,        setTicker]        = useState<MarketTicker | null>(null)
-  const [selectorOpen,  setSelectorOpen]  = useState(false)
-  const [clickedPrice,  setClickedPrice]  = useState<number | undefined>()
-  const [mobileTab,     setMobileTab]     = useState<MobileTab>('chart')
-  const [availableUsdc, setAvailableUsdc] = useState(0)
-  const [availableBase, setAvailableBase] = useState(0)
-  const [openInterest,  setOpenInterest]  = useState<OpenInterestInfo | null>(null)
+  const [markets,          setMarkets]          = useState<Market[]>([])
+  const [activeMarket,     setActiveMarket]     = useState<Market | null>(null)
+  const [ticker,           setTicker]           = useState<MarketTicker | null>(null)
+  const [selectorOpen,     setSelectorOpen]     = useState(false)
+  const [clickedPrice,     setClickedPrice]     = useState<number | undefined>()
+  const [mobileContentTab, setMobileContentTab] = useState<MobileContentTab>('chart')
+  const [orderSheet,       setOrderSheet]       = useState<'buy' | 'sell' | null>(null)
+  const [availableUsdc,    setAvailableUsdc]    = useState(0)
+  const [availableBase,    setAvailableBase]    = useState(0)
+  const [openInterest,     setOpenInterest]     = useState<OpenInterestInfo | null>(null)
 
   useEffect(() => {
     marketService.listAllMarkets().then(res => {
@@ -316,12 +317,15 @@ export default function TradePage() {
   const spotMarkets = markets.filter(m => m.type === 'spot')
   const perpMarkets = markets.filter(m => m.type === 'perp')
 
-  const mobileTabs: { id: MobileTab; label: string }[] = [
+  const mobileContentTabs: { id: MobileContentTab; label: string }[] = [
     { id: 'chart',  label: 'Chart' },
-    { id: 'book',   label: 'Book' },
+    { id: 'book',   label: 'Order Book' },
     { id: 'trades', label: 'Trades' },
-    { id: 'order',  label: 'Order' },
   ]
+
+  const changeStr = ticker?.change24hPct ?? (ticker ? `${ticker.change24h}%` : null)
+  const changeUp  = changeStr?.startsWith('+')
+  const changeColor = changeUp ? 'var(--up-500)' : changeStr?.startsWith('-') ? 'var(--down-500)' : 'var(--text-tertiary)'
 
   if (markets.length === 0 && !activeMarket) {
     return (
@@ -335,8 +339,8 @@ export default function TradePage() {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - var(--topbar-h))' }}>
 
-      {/* Market header strip */}
-      <div style={{ height: 66, background: 'var(--surface-1)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }} className="flex items-center gap-[30px] px-5 overflow-x-auto">
+      {/* Desktop market header strip */}
+      <div style={{ height: 66, background: 'var(--surface-1)', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }} className="hidden lg:flex items-center gap-[30px] px-5 overflow-x-auto">
         <button onClick={() => setSelectorOpen(true)} className="flex items-center gap-3 shrink-0" style={{ background: 'none', border: 'none', cursor: 'pointer', paddingRight: 26, borderRight: '1px solid var(--border-subtle)' }}>
           <span style={{ fontSize: 20, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
             {isPerp ? `${pair.base} - ${pair.quote}` : `${pair.base} / ${pair.quote}`}
@@ -347,28 +351,17 @@ export default function TradePage() {
             : <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'rgba(46,189,133,0.18)', color: '#2EBD85', border: '1px solid rgba(46,189,133,0.4)' }}>SPOT</span>
           }
         </button>
-
-        <Stat label="Last Price"  value={ticker ? ticker.lastPrice : '—'} />
+        <Stat label="Last Price"  value={ticker?.lastPrice ?? '—'} />
         <div className="flex flex-col gap-[3px] shrink-0">
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>24h Change</span>
-          {ticker ? (
-            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: ticker.change24h.startsWith('+') ? 'var(--up-500)' : ticker.change24h.startsWith('-') ? 'var(--down-500)' : 'var(--text-secondary)' }}>
-              {ticker.change24h}%
-            </span>
-          ) : (
-            <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>—</span>
-          )}
+          <span style={{ fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: changeColor }}>{changeStr ?? '—'}</span>
         </div>
         <Stat label="24h High"   value={ticker?.high24h   ?? '—'} muted />
         <Stat label="24h Low"    value={ticker?.low24h    ?? '—'} muted />
         <Stat label="24h Volume" value={ticker ? `$${(parseFloat(ticker.volume24h) / 1_000).toFixed(1)}K` : '—'} />
-
-        {/* Perp-only stats */}
         {isPerp && FLAGS.PERPS && (
           <>
-            {openInterest && (
-              <Stat label="Open Interest" value={`$${fmt(parseFloat(openInterest.notional) / 1_000_000, 2)}M`} />
-            )}
+            {openInterest && <Stat label="Open Interest" value={`$${fmt(parseFloat(openInterest.notional) / 1_000_000, 2)}M`} />}
             <div style={{ height: 36, width: 1, background: 'var(--border-subtle)', flexShrink: 0 }} />
             <FundingRateBar marketId={marketId} />
           </>
@@ -421,22 +414,104 @@ export default function TradePage() {
         </div>
       </div>
 
-      {/* Mobile layout */}
+      {/* ── Mobile layout ────────────────────────────────────────────────────── */}
       <div className="flex lg:hidden flex-col flex-1 min-h-0">
-        <div className="flex border-b border-[var(--border-subtle)] shrink-0" style={{ background: 'var(--surface-1)' }}>
-          {mobileTabs.map(tab => (
-            <button key={tab.id} onClick={() => setMobileTab(tab.id)} className="flex-1 h-10 transition-colors" style={{ fontSize: 13, fontWeight: 700, color: mobileTab === tab.id ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: mobileTab === tab.id ? '2px solid var(--accent)' : '2px solid transparent', background: 'none', border: 'none' }}>
-              {tab.label}
+
+        {/* Compact market header */}
+        <div style={{ height: 56, flexShrink: 0, background: 'var(--surface-1)', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px' }}>
+          <button
+            onClick={() => setSelectorOpen(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
+              {isPerp ? `${pair.base}-PERP` : `${pair.base}/${pair.quote}`}
+            </span>
+            {isPerp
+              ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(160,81,252,0.18)', color: '#A051FC' }}>PERP</span>
+              : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 5px', borderRadius: 3, background: 'rgba(46,189,133,0.18)', color: '#2EBD85' }}>SPOT</span>
+            }
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-tertiary)" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+            <span style={{ fontSize: 18, fontWeight: 900, fontFamily: 'var(--font-mono)', color: '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>
+              {ticker?.lastPrice ?? '—'}
+            </span>
+            {changeStr && (
+              <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: changeColor }}>
+                {changeStr}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Content tabs: Chart / Order Book / Trades */}
+        <div style={{ display: 'flex', height: 40, flexShrink: 0, background: 'var(--surface-1)', borderBottom: '1px solid var(--border-subtle)' }}>
+          {mobileContentTabs.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setMobileContentTab(id)}
+              style={{ flex: 1, height: '100%', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
+                color: mobileContentTab === id ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                borderBottom: mobileContentTab === id ? '2px solid var(--accent)' : '2px solid transparent',
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {mobileTab === 'chart'  && <div className="h-full"><MarketChartCard marketId={marketId} baseAsset={activeMarket?.baseAsset ?? ''} quoteAsset={activeMarket?.quoteAsset ?? ''} marketType={activeMarket?.type} tickerOverride={ticker} /></div>}
-          {mobileTab === 'book'   && <OrderBook marketId={marketId} onPriceClick={p => { setClickedPrice(p); setMobileTab('order') }} />}
-          {mobileTab === 'trades' && <RecentTrades marketId={marketId} baseSymbol={activeMarket?.baseAsset} />}
-          {mobileTab === 'order'  && <div className="overflow-y-auto h-full"><OrderEntry marketId={marketId} isPerp={isPerp} prefillPrice={clickedPrice} pair={pair} availableUsdc={availableUsdc} availableBase={availableBase} /></div>}
+
+        {/* Main content */}
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {mobileContentTab === 'chart'  && <MarketChartCard marketId={marketId} baseAsset={activeMarket?.baseAsset ?? ''} quoteAsset={activeMarket?.quoteAsset ?? ''} marketType={activeMarket?.type} tickerOverride={ticker} />}
+          {mobileContentTab === 'book'   && <OrderBook marketId={marketId} onPriceClick={p => { setClickedPrice(p); setOrderSheet('buy') }} />}
+          {mobileContentTab === 'trades' && <RecentTrades marketId={marketId} baseSymbol={activeMarket?.baseAsset} />}
+        </div>
+
+        {/* Orders panel */}
+        <div style={{ height: 196, flexShrink: 0, background: 'var(--surface-1)', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <PositionsPanel market={activeMarket} />
+        </div>
+
+        {/* Sticky Buy / Sell */}
+        <div style={{ flexShrink: 0, display: 'flex', gap: 10, padding: '10px 14px', background: 'var(--bg-base)', borderTop: '1px solid var(--border-subtle)' }}>
+          <button
+            onClick={() => setOrderSheet('buy')}
+            style={{ flex: 1, height: 50, borderRadius: 10, fontSize: 15, fontWeight: 900, background: 'var(--up-500)', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            Buy {pair.base || '—'}
+          </button>
+          <button
+            onClick={() => setOrderSheet('sell')}
+            style={{ flex: 1, height: 50, borderRadius: 10, fontSize: 15, fontWeight: 900, background: 'var(--down-500)', color: '#fff', border: 'none', cursor: 'pointer' }}
+          >
+            Sell {pair.base || '—'}
+          </button>
         </div>
       </div>
+
+      {/* Order entry bottom sheet (mobile) */}
+      {orderSheet !== null && (
+        <div
+          className="lg:hidden"
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'flex-end' }}
+          onClick={() => setOrderSheet(null)}
+        >
+          <div
+            style={{ width: '100%', maxHeight: '85vh', background: 'var(--surface-1)', borderRadius: '16px 16px 0 0', overflowY: 'auto', paddingBottom: 'calc(env(safe-area-inset-bottom) + 16px)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ width: 40, height: 4, background: 'var(--border-subtle)', borderRadius: 2, margin: '12px auto 0' }} />
+            <OrderEntry
+              marketId={marketId}
+              isPerp={isPerp}
+              prefillPrice={clickedPrice}
+              pair={pair}
+              availableUsdc={availableUsdc}
+              availableBase={availableBase}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Market selector modal */}
       {selectorOpen && (

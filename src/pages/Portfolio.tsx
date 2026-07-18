@@ -3,6 +3,7 @@ import { portfolioService } from '../services/portfolioService'
 import { orderService, statusLabel } from '../services/orderService'
 import { authService } from '../services/authService'
 import { FLAGS } from '../config/featureFlags'
+import { useIsMobile } from '../hooks/useIsMobile'
 import type { PortfolioPosition, Order, Balance, PortfolioStats, OrderStatus } from '../types'
 
 function getUserId(): string {
@@ -101,6 +102,7 @@ function HistoryRow({ order }: { order: Order }) {
 }
 
 export default function Portfolio() {
+  const isMobile = useIsMobile()
   const [tab,          setTab]          = useState<PortTab>(PORT_TABS[0])
   const [period,       setPeriod]       = useState<typeof PERIODS[number]>('30D')
   const [stats,        setStats]        = useState<PortfolioStats | null>(null)
@@ -158,9 +160,9 @@ export default function Portfolio() {
         <div style={{ padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>Loading portfolio…</div>
       ) : (
         <>
-          {/* Summary + Chart row */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 18 }}>
-            <div style={{ flex: '0 0 360px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Summary + Chart row — stacks to column on mobile */}
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, marginBottom: 18 }}>
+            <div style={{ flex: isMobile ? '1 1 auto' : '0 0 360px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Account Equity</span>
                 <span style={{ fontSize: 34, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fff', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.01em' }}>{fmt(equity)}</span>
@@ -205,53 +207,56 @@ export default function Portfolio() {
 
           {/* Positions / Orders */}
           <div style={{ background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', marginBottom: 18 }}>
-            <div style={{ borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', height: 42, padding: '0 4px' }}>
+            <div style={{ borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', height: 42, padding: '0 4px', overflowX: 'auto' }}>
               {PORT_TABS.map(t => (
-                <button key={t} onClick={() => setTab(t)} style={{ height: '100%', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: tab === t ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', background: 'transparent', border: 'none' }}>{t}</button>
+                <button key={t} onClick={() => setTab(t)} style={{ height: '100%', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', color: tab === t ? 'var(--text-primary)' : 'var(--text-tertiary)', borderBottom: tab === t ? '2px solid var(--accent)' : '2px solid transparent', background: 'transparent', border: 'none' }}>{t}</button>
               ))}
             </div>
 
-            {(tab === 'Positions' || tab === 'Holdings') && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 1fr 0.8fr', padding: '9px 14px' }}>
-                  {['Position', 'Size / Tokens', 'Entry', 'Mark', 'PnL (USDC)', 'Liq. Price', ''].map((h, i) => (
-                    <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 && i < 6 ? 'right' : undefined }}>{h}</span>
-                  ))}
-                </div>
-                {positions.length === 0
-                  ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No open positions</div>
-                  : positions.map(pos => <PositionRow key={pos.marketId} pos={pos} />)
-                }
-              </>
-            )}
+            {/* Table wrapper — horizontal scroll on mobile */}
+            <div style={{ overflowX: 'auto' }}>
+              {(tab === 'Positions' || tab === 'Holdings') && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 1fr 0.8fr', padding: '9px 14px', minWidth: 560 }}>
+                    {['Position', 'Size / Tokens', 'Entry', 'Mark', 'PnL (USDC)', 'Liq. Price', ''].map((h, i) => (
+                      <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 && i < 6 ? 'right' : undefined }}>{h}</span>
+                    ))}
+                  </div>
+                  {positions.length === 0
+                    ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No open positions</div>
+                    : positions.map(pos => <PositionRow key={pos.marketId} pos={pos} />)
+                  }
+                </>
+              )}
 
-            {tab === 'Open Orders' && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr 0.8fr 0.9fr 1fr 0.9fr 0.7fr', padding: '9px 14px' }}>
-                  {['Time', 'Side', 'Price', 'Size', 'Filled', 'Total', 'Status', ''].map((h, i) => (
-                    <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i >= 2 && i <= 5 ? 'right' : undefined }}>{h}</span>
-                  ))}
-                </div>
-                {openOrders.length === 0
-                  ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No open orders</div>
-                  : openOrders.map(o => <OpenOrderRow key={o.id} order={o} onCancel={handleCancel} />)
-                }
-              </>
-            )}
+              {tab === 'Open Orders' && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr 0.8fr 0.9fr 1fr 0.9fr 0.7fr', padding: '9px 14px', minWidth: 620 }}>
+                    {['Time', 'Side', 'Price', 'Size', 'Filled', 'Total', 'Status', ''].map((h, i) => (
+                      <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i >= 2 && i <= 5 ? 'right' : undefined }}>{h}</span>
+                    ))}
+                  </div>
+                  {openOrders.length === 0
+                    ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No open orders</div>
+                    : openOrders.map(o => <OpenOrderRow key={o.id} order={o} onCancel={handleCancel} />)
+                  }
+                </>
+              )}
 
-            {tab === 'Order History' && (
-              <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr 0.8fr 0.9fr 1fr 0.9fr', padding: '9px 14px' }}>
-                  {['Time', 'Side', 'Price', 'Size', 'Filled', 'Total', 'Status'].map((h, i) => (
-                    <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i >= 2 && i <= 5 ? 'right' : undefined }}>{h}</span>
-                  ))}
-                </div>
-                {orderHistory.length === 0
-                  ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No order history</div>
-                  : orderHistory.map(o => <HistoryRow key={o.id} order={o} />)
-                }
-              </>
-            )}
+              {tab === 'Order History' && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.8fr 1fr 0.8fr 0.9fr 1fr 0.9fr', padding: '9px 14px', minWidth: 560 }}>
+                    {['Time', 'Side', 'Price', 'Size', 'Filled', 'Total', 'Status'].map((h, i) => (
+                      <span key={i} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i >= 2 && i <= 5 ? 'right' : undefined }}>{h}</span>
+                    ))}
+                  </div>
+                  {orderHistory.length === 0
+                    ? <div style={{ padding: '24px 16px', textAlign: 'center', fontSize: 13, color: 'var(--text-tertiary)' }}>No order history</div>
+                    : orderHistory.map(o => <HistoryRow key={o.id} order={o} />)
+                  }
+                </>
+              )}
+            </div>
           </div>
 
           {/* Balances */}

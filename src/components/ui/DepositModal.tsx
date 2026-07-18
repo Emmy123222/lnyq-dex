@@ -145,15 +145,17 @@ function CrossChainTab() {
     )
   }
 
-  const session    = authService.loadSession()
-  const toAddress  = session?.walletAddress ?? ''
-  const amountNum  = parseFloat(amount) || 0
-  const amountBase = String(Math.round(amountNum * 10 ** USDC_DECIMALS))
+  const session     = authService.loadSession()
+  const toAddress   = session?.walletAddress ?? ''
+  const fromAddress = ''  // EVM source wallet not available until Phase 3
+  const amountNum   = parseFloat(amount) || 0
+  const amountBase  = String(Math.round(amountNum * 10 ** USDC_DECIMALS))
 
-  const canQuote = amountNum > 0 && !!CHAIN_ID[chain] && !!toAddress
+  // Preview requires: amount > 0, known chain, real Solana toAddress, real EVM fromAddress
+  const canQuote = amountNum > 0 && !!CHAIN_ID[chain] && !!toAddress && !!fromAddress
 
   const getQuote = async () => {
-    if (!toAddress) return
+    if (!toAddress || !fromAddress) return
     setQuoting(true); setRoute(null); setQuoteError(null)
     const res = await squidService.getRoute({
       fromChain:   CHAIN_ID[chain],
@@ -161,7 +163,7 @@ function CrossChainTab() {
       fromAmount:  amountBase,
       toChain:     SOLANA_CHAIN_ID,
       toToken:     SOLANA_USDC,
-      fromAddress: '0x0000000000000000000000000000000000000001',
+      fromAddress,
       toAddress,
     })
     if (res.ok) setRoute(res.data)
@@ -226,10 +228,15 @@ function CrossChainTab() {
         </div>
       )}
 
-      {/* Wallet guard */}
+      {/* Route guards */}
       {!toAddress && (
         <div style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6, fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
           Connect your Solana wallet to preview a cross-chain route.
+        </div>
+      )}
+      {toAddress && !fromAddress && (
+        <div style={{ padding: '10px 12px', background: 'rgba(240,165,0,0.07)', border: '1px solid rgba(240,165,0,0.25)', borderRadius: 6, fontSize: 12, color: '#F0A500', lineHeight: 1.5 }}>
+          EVM source wallet required — cross-chain route preview is available in Phase 3.
         </div>
       )}
 

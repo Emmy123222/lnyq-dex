@@ -185,6 +185,8 @@ export default function OrderBook({
 }: OrderBookProps) {
   const [book,       setBook]      = useState<OrderBookData | null>(null)
   const [loading,    setLoading]   = useState(true)
+  const [loadError,  setLoadError] = useState(false)
+  const [retryKey,   setRetryKey]  = useState(0)
   const [view,       setView]      = useState<View>('both')
   const [grouping,   setGrouping]  = useState<Grouping>(0.01)
   const [lastTrade,  setLastTrade] = useState<{ price: number; dir: 'up' | 'down' | 'same' } | null>(null)
@@ -212,10 +214,18 @@ export default function OrderBook({
     if (!marketId) { setLoading(false); return }
     let cancelled = false
     setLoading(true)
+    setLoadError(false)
+
+    // 10s hard timeout — if no snapshot arrives, exit loading with error
+    const loadTimeout = setTimeout(() => {
+      if (!cancelled) { setLoading(false); setLoadError(true) }
+    }, 10_000)
 
     orderBookService.getOrderBook(marketId).then(res => {
       if (!cancelled) {
-        if (res.ok) setBook(res.data)
+        clearTimeout(loadTimeout)
+        if (res.ok) { setBook(res.data); setLoadError(false) }
+        else setLoadError(true)
         setLoading(false)
       }
     })
@@ -225,15 +235,21 @@ export default function OrderBook({
       updated => {
         if (!cancelled) {
           setBook(updated)
+          setLoadError(false)
           lastUpdateRef.current = Date.now()
           setStale(false)
         }
       },
-      status  => { if (!cancelled) setBookStatus(status) },
+      status => {
+        if (!cancelled) {
+          setBookStatus(status)
+          if (status === 'unavailable') setLoadError(true)
+        }
+      },
     )
 
-    return () => { cancelled = true; unsubBook() }
-  }, [marketId])
+    return () => { cancelled = true; clearTimeout(loadTimeout); unsubBook() }
+  }, [marketId, retryKey])
 
   // Stale data detection — warn after 15s without an update (skip for polling mode)
   useEffect(() => {
@@ -299,10 +315,24 @@ export default function OrderBook({
     )
   }
 
-  if (loading || !book) {
+  if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
         <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading order book…</span>
+      </div>
+    )
+  }
+
+  if (loadError || !book) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, height: '100%' }}>
+        <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Order book unavailable</span>
+        <button
+          onClick={() => setRetryKey(k => k + 1)}
+          style={{ height: 30, padding: '0 14px', fontSize: 12, fontWeight: 700, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-secondary)', cursor: 'pointer' }}
+        >
+          Retry
+        </button>
       </div>
     )
   }
