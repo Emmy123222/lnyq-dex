@@ -11,6 +11,7 @@ import { useState } from 'react'
 import { useMarketChart }   from '../../hooks/useMarketChart'
 import { useMarketTicker }  from '../../hooks/useMarketTicker'
 import { useOrderBookTop }  from '../../hooks/useOrderBookTop'
+import { useIsMobile }      from '../../hooks/useIsMobile'
 import { ChartHeader }      from './ChartHeader'
 import { ChartStatsStrip }  from './ChartStatsStrip'
 import { ChartToolbar }     from './ChartToolbar'
@@ -48,7 +49,7 @@ export default function MarketChartCard({
   const handleIndicators = (patch: Partial<ChartIndicators>) =>
     setIndicators(prev => ({ ...prev, ...patch }))
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768
+  const isMobile = useIsMobile()
 
   return (
     <div className="chart-glass" style={{ height: '100%' }}>

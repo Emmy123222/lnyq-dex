@@ -16,8 +16,10 @@ export function useOrderBookTop(marketId: string): OrderBookTop {
     return orderBookService.subscribe(marketId, (book: OrderBook) => {
       const bestBid  = book.bids[0]?.price ?? null
       const bestAsk  = book.asks[0]?.price ?? null
-      const spreadBps = bestBid && bestAsk
-        ? Math.round(((parseFloat(bestAsk) - parseFloat(bestBid)) / parseFloat(bestBid)) * 10_000)
+      const mid      = book.midpoint ? parseFloat(book.midpoint) : 0
+      // spread bps = (ask - bid) / midpoint × 10_000
+      const spreadBps = bestBid && bestAsk && mid > 0
+        ? Math.round(((parseFloat(bestAsk) - parseFloat(bestBid)) / mid) * 10_000)
         : null
       setTop({
         bestBid,

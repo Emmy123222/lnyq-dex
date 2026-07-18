@@ -190,9 +190,11 @@ export default function OrderBook({
   const [lastTrade,  setLastTrade] = useState<{ price: number; dir: 'up' | 'down' | 'same' } | null>(null)
   const [flashes,    setFlashes]   = useState<Map<string, FlashDir>>(new Map())
   const [bookStatus, setBookStatus] = useState<BookStatus>('reconnecting')
+  const [stale,      setStale]     = useState(false)
 
   // Track previous grouped sizes to compute per-bucket flash direction
-  const prevGrouped = useRef<Map<string, number>>(new Map())
+  const prevGrouped   = useRef<Map<string, number>>(new Map())
+  const lastUpdateRef = useRef<number>(0)
 
   const triggerFlash = useCallback((key: string, dir: FlashDir) => {
     setFlashes(prev => new Map(prev).set(key, dir))
@@ -220,12 +222,29 @@ export default function OrderBook({
 
     const unsubBook = orderBookService.subscribe(
       marketId,
-      updated => { if (!cancelled) setBook(updated) },
+      updated => {
+        if (!cancelled) {
+          setBook(updated)
+          lastUpdateRef.current = Date.now()
+          setStale(false)
+        }
+      },
       status  => { if (!cancelled) setBookStatus(status) },
     )
 
     return () => { cancelled = true; unsubBook() }
   }, [marketId])
+
+  // Stale data detection — warn after 15s without an update (skip for polling mode)
+  useEffect(() => {
+    if (!marketId || bookStatus === 'delayed') return
+    const id = setInterval(() => {
+      if (lastUpdateRef.current > 0 && Date.now() - lastUpdateRef.current > 15_000) {
+        setStale(true)
+      }
+    }, 5_000)
+    return () => clearInterval(id)
+  }, [marketId, bookStatus])
 
   // Trade price tracking
   useEffect(() => {
@@ -301,6 +320,24 @@ export default function OrderBook({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', userSelect: 'none' }}>
       <style>{`@keyframes obPulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+
+      {/* ── Stale data warning ── */}
+      {stale && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', flexShrink: 0,
+          background: 'rgba(240,185,11,0.10)',
+          borderBottom: '1px solid rgba(240,185,11,0.25)',
+        }}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F0B90B" strokeWidth="2" strokeLinecap="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span style={{ fontSize: 10, fontWeight: 700, color: '#F0B90B' }}>
+            Data may be stale — no update received in 15s
+          </span>
+        </div>
+      )}
 
       {/* ── Toolbar ── */}
       <div style={{

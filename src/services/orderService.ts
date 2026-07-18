@@ -80,8 +80,9 @@ export const orderService = {
           marketId:    req.marketId,
           side:        req.side,
           type:        req.type,
-          price:       req.price ? parseFloat(req.price) : undefined,
-          quantity:    parseInt(req.quantity),
+          // Pass as strings — backend's Number() coercion is the single conversion point
+          price:       req.price ?? undefined,
+          quantity:    req.quantity,
           timeInForce: req.timeInForce,
           expiresAt:   req.expiresAt,
           slippageBps: req.slippageBps,
@@ -112,8 +113,8 @@ export const orderService = {
 
   /** Pre-submission fee estimate. Display only — not used for settlement. */
   estimateFee(priceStr: string, quantityStr: string): FeeEstimate {
-    const price = parseFloat(priceStr) || 0
-    const qty   = parseInt(quantityStr) || 0
+    const price = Number(priceStr)  || 0
+    const qty   = Number(quantityStr) || 0
     const total = price * qty
     const takerFee = (total * TAKER_FEE_BPS) / BPS_DIVISOR
     const makerFee = (total * MAKER_FEE_BPS) / BPS_DIVISOR

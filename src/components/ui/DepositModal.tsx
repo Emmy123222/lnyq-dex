@@ -105,9 +105,7 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
   const [amount,   setAmount]   = useState('')
   const [tracking, setTracking] = useState(false)
 
-  const amountNum  = parseFloat(amount) || 0
-  const bridgeFee  = amountNum > 0 ? 0.50 : 0
-  const youReceive = amountNum > bridgeFee ? amountNum - bridgeFee : 0
+  const amountNum = parseFloat(amount) || 0
 
   const execute = () => setTracking(true)
 
@@ -171,9 +169,9 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
         <div style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
           <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>Route estimate</div>
           {[
-            { label: 'Bridge fee',    value: `~${bridgeFee.toFixed(2)} USDC` },
-            { label: 'Est. time',     value: '~2–5 min' },
-            { label: 'You receive',   value: youReceive > 0 ? `${youReceive.toFixed(2)} USDC` : '—' },
+            { label: 'Bridge fee',  value: 'Quoted by Squid Router' },
+            { label: 'Est. time',   value: '~2–5 min (typical)' },
+            { label: 'You receive', value: `Up to ${amountNum.toFixed(2)} USDC minus fees` },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-tertiary)' }}>{row.label}</span>
@@ -181,15 +179,15 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            Route powered by Squid Router. Fees are estimates only.
+            Exact fees quoted by Squid Router at execution. Requires wallet connection.
           </div>
         </div>
       )}
 
       <button
         onClick={execute}
-        disabled={!amount || amountNum <= 0.5}
-        style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--accent)', color: '#fff', border: 'none', cursor: !amount || amountNum <= 0.5 ? 'not-allowed' : 'pointer', opacity: !amount || amountNum <= 0.5 ? 0.65 : 1 }}
+        disabled={!amount || amountNum <= 0}
+        style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--accent)', color: '#fff', border: 'none', cursor: !amount || amountNum <= 0 ? 'not-allowed' : 'pointer', opacity: !amount || amountNum <= 0 ? 0.65 : 1 }}
       >
         Bridge USDC from {chain}
       </button>
