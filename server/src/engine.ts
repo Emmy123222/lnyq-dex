@@ -702,6 +702,13 @@ function prismaOrderToWs(o: {
 
 // ── Async broadcast helpers ───────────────────────────────────────────────────
 
+const bookSeqNums = new Map<string, number>()
+function nextBookSeq(marketId: string): number {
+  const n = (bookSeqNums.get(marketId) ?? 0) + 1
+  bookSeqNums.set(marketId, n)
+  return n
+}
+
 async function broadcastBookAsync(marketId: string) {
   try {
     const [bidRows, askRows] = await Promise.all([
@@ -735,7 +742,7 @@ async function broadcastBookAsync(marketId: string) {
     const spread   = bestAsk > 0 && bestBid > 0 ? bestAsk - bestBid : 0
     const midpoint = bestAsk > 0 && bestBid > 0 ? (bestBid + bestAsk) / 2 : 0
 
-    broadcast({ type: 'orderbook', marketId, bids, asks, spread, midpoint })
+    broadcast({ type: 'orderbook', marketId, bids, asks, spread, midpoint, seqNum: nextBookSeq(marketId) })
   } catch { /* best-effort */ }
 }
 

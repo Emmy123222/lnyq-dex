@@ -113,15 +113,28 @@ export const orderBookService = {
       }
       const unsubStatus = simClient.onStatus(s => onStatus?.(wsStatusMap[s]))
 
-      const unsubBook = simClient.subscribeOrderBook(marketId, (msg) => {
+      let lastSeq = -1
+
+      const unsubBook = simClient.subscribeOrderBook(marketId, async (msg) => {
         const m = msg as {
           marketId: string
           bids: [number, number][]
           asks: [number, number][]
           spread: number
           midpoint: number
+          seqNum?: number
         }
-        onUpdate(wsMsgToBook(m.marketId, m.bids, m.asks, m.spread, m.midpoint))
+        const seq = m.seqNum ?? -1
+
+        // Sequence gap: missed a broadcast — fall back to REST snapshot.
+        if (seq !== -1 && lastSeq !== -1 && seq > lastSeq + 1) {
+          const snap = await orderBookService.getOrderBook(marketId)
+          if (snap.ok) onUpdate(snap.data)
+        } else {
+          onUpdate(wsMsgToBook(m.marketId, m.bids, m.asks, m.spread, m.midpoint))
+        }
+
+        if (seq !== -1) lastSeq = seq
       })
 
       return () => { unsubStatus(); unsubBook() }
@@ -141,7 +154,20 @@ export const orderBookService = {
     marketId: string,
     onTrade: (trade: PublicTrade) => void,
   ): () => void {
-    if (!ENV.IS_LOCAL_API) return () => {}
+    if (!ENV.IS_LOCAL_API) {
+      // devnet/staging/production — REST poll every 3s; no push stream yet
+      let lastId = ''
+      const id = setInterval(async () => {
+        const res = await orderBookService.getRecentTrades(marketId, 20)
+        if (!res.ok) return
+        for (const t of res.data) {
+          if (t.id === lastId) break
+          onTrade(t)
+        }
+        if (res.data.length > 0) lastId = res.data[0].id
+      }, 3000)
+      return () => clearInterval(id)
+    }
     return simClient.subscribeTrades(marketId, (msg) => {
       const m = msg as { trade: { id: string; price: number; quantity: number; takerSide: string; createdAt: number } }
       if (!m.trade) return

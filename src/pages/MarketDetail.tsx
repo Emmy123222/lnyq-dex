@@ -43,7 +43,7 @@ export default function MarketDetail() {
   const quoteAsset = market?.quoteAsset ?? 'USDC'
 
   const priceDisplay  = ticker?.lastPrice  ?? '—'
-  const changeDisplay = ticker?.change24hPct ?? ticker?.change24h ?? null
+  const changeDisplay = ticker?.change24hPct ?? null
   const changeNum     = changeDisplay ? parseFloat(changeDisplay) : null
   const changeColor   = changeNum == null ? 'var(--text-tertiary)' : changeNum >= 0 ? 'var(--up-500)' : 'var(--down-500)'
 

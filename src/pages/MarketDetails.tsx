@@ -83,7 +83,7 @@ export default function MarketDetails() {
       const built: MarketPair[] = await Promise.all(res.data.map(async m => {
         const ticker = await marketService.getTicker(m.id)
         const lastPrice  = ticker.ok ? parseFloat(ticker.data.lastPrice)  : 0
-        const change24h  = ticker.ok ? parseFloat(ticker.data.change24hPct ?? ticker.data.change24h) : 0
+        const change24h  = ticker.ok && ticker.data.change24hPct ? parseFloat(ticker.data.change24hPct) : 0
         const volume24h  = ticker.ok ? parseFloat(ticker.data.volume24h)  : 0
         const high24h    = ticker.ok ? parseFloat(ticker.data.high24h)    : 0
         const low24h     = ticker.ok ? parseFloat(ticker.data.low24h)     : 0

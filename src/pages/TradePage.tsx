@@ -323,7 +323,7 @@ export default function TradePage() {
     { id: 'trades', label: 'Trades' },
   ]
 
-  const changeStr = ticker?.change24hPct ?? (ticker ? `${ticker.change24h}%` : null)
+  const changeStr = ticker?.change24hPct ?? null
   const changeUp  = changeStr?.startsWith('+')
   const changeColor = changeUp ? 'var(--up-500)' : changeStr?.startsWith('-') ? 'var(--down-500)' : 'var(--text-tertiary)'
 

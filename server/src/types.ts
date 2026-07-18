@@ -126,6 +126,7 @@ export interface WsOrderBookMsg {
   asks: [number, number][]
   spread: number
   midpoint: number
+  seqNum: number             // monotonic sequence number; gaps trigger snapshot refetch
 }
 
 export interface WsTradeMsg {
