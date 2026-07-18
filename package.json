@@ -10,7 +10,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "check:no-mock-data": "node scripts/check-no-mock-data.mjs",
-    "test": "tsc -b --noEmit && node scripts/check-no-mock-data.mjs"
+    "test": "vitest run",
+    "test:types": "tsc -b --noEmit && node scripts/check-no-mock-data.mjs"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.35.1",
@@ -31,6 +32,7 @@
     "postcss": "^8.5.16",
     "tailwindcss": "^4.3.2",
     "typescript": "~6.0.2",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "vitest": "^4.1.10"
   }
 }

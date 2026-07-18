@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { orderBookService } from '../services/orderBookService'
 import { marketService } from '../services/marketService'
 import { useMarketTicker } from '../hooks/useMarketTicker'
 import MarketChartCard from '../components/trading/MarketChartCard'
-import type { Market, OrderBook } from '../types'
+import OrderBook from '../components/trading/OrderBook'
+import type { Market } from '../types'
 
 export default function MarketDetail() {
   const navigate = useNavigate()
   const { marketId = '' } = useParams<{ marketId: string }>()
 
-  const [book, setBook]         = useState<OrderBook | null>(null)
   const [market, setMarket]     = useState<Market | null>(null)
   const [marketError, setMarketError] = useState(false)
   const { ticker } = useMarketTicker(marketId)
@@ -21,14 +20,6 @@ export default function MarketDetail() {
       if (res.ok) setMarket(res.data)
       else setMarketError(true)
     })
-  }, [marketId])
-
-  useEffect(() => {
-    if (!marketId) return
-    orderBookService.getOrderBook(marketId).then(res => {
-      if (res.ok) setBook(res.data)
-    })
-    return orderBookService.subscribe(marketId, b => setBook(b))
   }, [marketId])
 
   if (!marketId) {
@@ -50,14 +41,6 @@ export default function MarketDetail() {
 
   const baseAsset  = market?.baseAsset  ?? marketId.split('-')[0]
   const quoteAsset = market?.quoteAsset ?? 'USDC'
-
-  const asks = book?.asks.slice(0, 8) ?? []
-  const bids = book?.bids.slice(0, 8) ?? []
-  const maxSz = Math.max(
-    ...asks.map(l => parseFloat(l.size)),
-    ...bids.map(l => parseFloat(l.size)),
-    1,
-  )
 
   const priceDisplay  = ticker?.lastPrice  ?? '—'
   const changeDisplay = ticker?.change24h  ?? null
@@ -92,14 +75,11 @@ export default function MarketDetail() {
             <span style={{ fontSize: 28, fontWeight: 800, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: '#fff' }}>
               {priceDisplay !== '—' ? parseFloat(priceDisplay).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : '—'}
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              {changeNum != null && (
-                <span style={{ fontSize: 13, fontWeight: 700, color: changeColor }}>
-                  {changeNum >= 0 ? '+' : ''}{changeNum.toFixed(2)}%
-                </span>
-              )}
-              {book && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>Spread: {book.spread}</span>}
-            </div>
+            {changeNum != null && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: changeColor }}>
+                {changeNum >= 0 ? '+' : ''}{changeNum.toFixed(2)}%
+              </span>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
             <button onClick={() => navigate('/trade')} style={{ height: 46, padding: '0 20px', borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--buy)', color: '#fff', border: 'none', cursor: 'pointer' }}>Buy</button>
@@ -165,42 +145,8 @@ export default function MarketDetail() {
         </div>
 
         {/* MIDDLE — order book */}
-        <div style={{ flex: '0 0 300px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ height: 44, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>Order Book</span>
-            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{baseAsset}/{quoteAsset}</span>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-            {['Price', baseAsset, 'Total'].map((h, i) => (
-              <span key={h} style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)', textAlign: i > 0 ? 'right' : 'left' }}>{h}</span>
-            ))}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-            {!book && <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12 }}>Loading…</div>}
-            {asks.slice().reverse().map((a, i) => (
-              <div key={i} style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '4px 14px', alignItems: 'center' }}>
-                <span style={{ position: 'absolute', right: 0, top: 0, bottom: 0, background: 'rgba(246,70,93,0.08)', width: `${(parseFloat(a.size) / maxSz) * 100}%` }} />
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--down-500)', position: 'relative' }}>{parseFloat(a.price).toFixed(2)}</span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', textAlign: 'right', position: 'relative' }}>{a.size}</span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)', textAlign: 'right', position: 'relative' }}>{a.total}</span>
-              </div>
-            ))}
-            {book && (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '6px 14px', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: 'var(--text-tertiary)' }}>Spread</span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--text-secondary)' }}>{book.spread}</span>
-                <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{book.spreadPct}%</span>
-              </div>
-            )}
-            {bids.map((b, i) => (
-              <div key={i} style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '4px 14px', alignItems: 'center' }}>
-                <span style={{ position: 'absolute', right: 0, top: 0, bottom: 0, background: 'rgba(46,189,133,0.08)', width: `${(parseFloat(b.size) / maxSz) * 100}%` }} />
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--up-500)', position: 'relative' }}>{parseFloat(b.price).toFixed(2)}</span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-secondary)', textAlign: 'right', position: 'relative' }}>{b.size}</span>
-                <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: 'var(--text-tertiary)', textAlign: 'right', position: 'relative' }}>{b.total}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{ flex: '0 0 300px', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <OrderBook marketId={marketId} maxRows={10} />
         </div>
 
         {/* RIGHT — top holders (unavailable until on-chain indexer provides data) */}
