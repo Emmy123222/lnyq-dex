@@ -122,7 +122,6 @@ export function subDecStr(a: string, b: string): string {
  */
 export function parseDecimalToUnits(s: string, unitDecimals: number): bigint {
   const [int, dec] = decParts(s)
-  const factor     = 10n ** BigInt(unitDecimals)
   if (dec === unitDecimals) return int
   if (dec < unitDecimals)  return int * 10n ** BigInt(unitDecimals - dec)
   // dec > unitDecimals: truncate (do not round — round-half-up can over-spend)
