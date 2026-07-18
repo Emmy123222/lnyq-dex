@@ -15,6 +15,7 @@ import { useToast } from '../ui/Toast'
 import { FLAGS } from '../../config/featureFlags'
 import { ENV } from '../../config/env'
 import { authService } from '../../services/authService'
+import { mulDecStr, cmpDecStr } from '../../utils/decimal'
 import {
   TAKER_FEE_BPS, MAKER_FEE_BPS,
   PERP_TAKER_FEE_BPS, PERP_MAKER_FEE_BPS,
@@ -203,7 +204,9 @@ export default function OrderEntry({
     return orderBookService.subscribe(marketId, setBook)
   }, [marketId])
 
-  // For display/preview computation only — not sent to backend as-is
+  // priceNum / qtyNum / notional — display and preview only; not sent to backend.
+  // Phase 1: quantities are whole integers; prices are decimal strings (e.g. "74.50").
+  // The submission path sends string `price` and `quantity` directly — no Number conversion.
   const priceNum    = Number(price)    || 0
   const qtyNum      = Number(quantity) || 0
   const notional    = priceNum * qtyNum
@@ -228,9 +231,15 @@ export default function OrderEntry({
     ? `${qtyNum || 0} ${pair.base}`
     : `${fmt(notional - estFee)} USDC`
 
+  // Balance check uses fixed-point comparison to avoid IEEE-754 drift.
+  // availableUsdc/availableBase are number props; convert to string for cmpDecStr.
+  // For perps, margin = notional / leverage (division not in decimal.ts yet → fallback Number).
+  const notionalStr   = price && quantity ? mulDecStr(price, quantity) : '0'
   const hasSufficientBalance = side === 'buy'
-    ? availableUsdc >= marginRequired
-    : availableBase >= qtyNum
+    ? (perpEnabled
+        ? availableUsdc >= marginRequired           // perp leverage division: Number is acceptable for now
+        : cmpDecStr(String(availableUsdc), notionalStr) >= 0)
+    : cmpDecStr(String(availableBase), quantity || '0') >= 0
 
   const gtdValid = tif !== 'GTD' || (gtdExpiry !== '' && new Date(gtdExpiry) > new Date())
 

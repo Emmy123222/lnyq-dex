@@ -186,7 +186,7 @@ export function validatePriceStr(
   if (cmpDecStr(trimmed, '0') <= 0) return { ok: false, error: 'Price must be greater than zero.' }
   if (tickSize && cmpDecStr(tickSize, '0') > 0) {
     const tick = validateTickStr(trimmed, tickSize)
-    if (!tick.ok) return tick
+    if (tick.ok === false) return { ok: false, error: tick.error }
   }
   return { ok: true, value: trimmed }
 }
@@ -195,6 +195,17 @@ export function validatePriceStr(
  * Validate a quantity string before order submission.
  * Returns { ok: true, value } on success or { ok: false, error } on failure.
  * The value is the original string — never converted to Number.
+ *
+ * Phase 1 quantity precision decision:
+ *   Quantities are whole integers only. This is enforced at three layers:
+ *   1. UI: OrderEntry.submit() rejects non-integer strings via /^\d+$/.test()
+ *   2. Backend route: Number(quantity) drops decimals before the engine sees them
+ *   3. Engine: !Number.isInteger(req.quantity) rejects non-integers with an error
+ *
+ *   Fractional quantity support (e.g. 0.5 SOL) is a Phase 2 decision. It
+ *   would require: updating the engine's integer guard, changing the Prisma
+ *   schema (quantity: Decimal), updating fill/balance arithmetic, and updating
+ *   this validator to allow decimals with a configurable step size.
  */
 export function validateQtyStr(
   raw: string,
