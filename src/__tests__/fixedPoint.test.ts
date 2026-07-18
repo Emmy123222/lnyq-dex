@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { addDecStr, mulDecStr, cmpDecStr } from '../utils/decimal'
+import {
+  addDecStr, mulDecStr, cmpDecStr,
+  subDecStr, parseDecimalToUnits, formatUnitsToDecimal,
+  calculateFeeBps, validateTickStr,
+} from '../utils/decimal'
 
 // ── addDecStr ─────────────────────────────────────────────────────────────────
 
@@ -66,5 +70,114 @@ describe('cmpDecStr', () => {
   })
   it('correctly orders large values', () => {
     expect(cmpDecStr('1000000', '999999.9999')).toBe(1)
+  })
+})
+
+// ── subDecStr ─────────────────────────────────────────────────────────────────
+
+describe('subDecStr', () => {
+  it('subtracts two integers', () => {
+    expect(subDecStr('300', '100')).toBe('200')
+  })
+  it('subtracts without IEEE-754 drift', () => {
+    expect(subDecStr('0.3', '0.1')).toBe('0.2')
+  })
+  it('produces a negative result when a < b', () => {
+    expect(subDecStr('1', '1.5')).toBe('-0.5')
+  })
+  it('handles fee deduction: 100 - 0.25 = 99.75', () => {
+    expect(subDecStr('100', '0.25')).toBe('99.75')
+  })
+  it('returns 0 when values are equal', () => {
+    expect(subDecStr('1.00', '1')).toBe('0')
+  })
+})
+
+// ── parseDecimalToUnits ───────────────────────────────────────────────────────
+
+describe('parseDecimalToUnits', () => {
+  it('converts USDC with 6 decimals', () => {
+    expect(parseDecimalToUnits('1.5', 6)).toBe(1_500_000n)
+  })
+  it('handles whole number input', () => {
+    expect(parseDecimalToUnits('100', 6)).toBe(100_000_000n)
+  })
+  it('handles more input decimals than unit decimals (truncates)', () => {
+    // 1.5001 with 3 unit decimals = 1500 (truncate, not round)
+    expect(parseDecimalToUnits('1.5001', 3)).toBe(1500n)
+  })
+  it('handles zero', () => {
+    expect(parseDecimalToUnits('0', 6)).toBe(0n)
+  })
+  it('SOL lamports: 1.123456789 SOL → truncates to 1123456789 lamports (9 decimals)', () => {
+    expect(parseDecimalToUnits('1.123456789', 9)).toBe(1_123_456_789n)
+  })
+})
+
+// ── formatUnitsToDecimal ──────────────────────────────────────────────────────
+
+describe('formatUnitsToDecimal', () => {
+  it('is the inverse of parseDecimalToUnits for whole amounts', () => {
+    expect(formatUnitsToDecimal(100_000_000n, 6)).toBe('100')
+  })
+  it('formats fractional USDC correctly', () => {
+    expect(formatUnitsToDecimal(1_500_000n, 6)).toBe('1.5')
+  })
+  it('handles sub-unit amounts', () => {
+    expect(formatUnitsToDecimal(1n, 6)).toBe('0.000001')
+  })
+  it('handles zero units', () => {
+    expect(formatUnitsToDecimal(0n, 6)).toBe('0')
+  })
+})
+
+// ── calculateFeeBps ───────────────────────────────────────────────────────────
+
+describe('calculateFeeBps', () => {
+  it('calculates 10 bps (0.1%) of 100 = 0.1', () => {
+    expect(calculateFeeBps('100', 10)).toBe('0.1')
+  })
+  it('calculates 30 bps (0.3%) of 74.95', () => {
+    // 74.95 * 30 / 10000 = 0.22485 — exact, no IEEE-754 drift
+    expect(calculateFeeBps('74.95', 30)).toBe('0.22485')
+  })
+  it('calculates 0 bps correctly', () => {
+    expect(calculateFeeBps('1000', 0)).toBe('0')
+  })
+  it('calculates 10000 bps (100%) of 1', () => {
+    expect(calculateFeeBps('1', 10000)).toBe('1')
+  })
+})
+
+// ── validateTickStr ───────────────────────────────────────────────────────────
+
+describe('validateTickStr', () => {
+  it('passes when price is a valid tick multiple', () => {
+    expect(validateTickStr('100.50', '0.5').ok).toBe(true)
+  })
+  it('fails when price is not a tick multiple', () => {
+    const r = validateTickStr('100.3', '0.5')
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('0.5')
+  })
+  it('passes for integer price with integer tick', () => {
+    expect(validateTickStr('100', '1').ok).toBe(true)
+  })
+  it('fails for integer price that is not a multiple of tick', () => {
+    expect(validateTickStr('101', '5').ok).toBe(false)
+  })
+  it('passes when tickSize is 0 (no tick constraint)', () => {
+    expect(validateTickStr('74.9999', '0').ok).toBe(true)
+  })
+  it('avoids float modulo drift: 0.3 is valid multiple of 0.1', () => {
+    // In float: 0.3 % 0.1 = 0.09999... ≠ 0 — BigInt path must pass
+    expect(validateTickStr('0.3', '0.1').ok).toBe(true)
+  })
+  it('avoids float modulo drift: 74.95 is not a multiple of 0.1', () => {
+    // float: 74.95 % 0.1 = 0.049999... which may round; BigInt must give false
+    expect(validateTickStr('74.95', '0.1').ok).toBe(false)
+  })
+  it('correctly rejects 74.95 against tick 1.0', () => {
+    expect(validateTickStr('74.95', '1.0').ok).toBe(false)
   })
 })

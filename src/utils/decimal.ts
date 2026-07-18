@@ -104,6 +104,70 @@ export function cmpDecStr(a: string, b: string): -1 | 0 | 1 {
   return diff < 0n ? -1 : diff > 0n ? 1 : 0
 }
 
+/**
+ * Subtract two decimal strings (a - b). Supports negative results.
+ * Safe for PnL, balance deltas, and fee deduction in order-critical paths.
+ */
+export function subDecStr(a: string, b: string): string {
+  const [ai, ad] = decParts(a)
+  const [bi, bd] = decParts(b)
+  const decimals  = Math.max(ad, bd)
+  const scale     = (d: number) => 10n ** BigInt(decimals - d)
+  return formatFixed(ai * scale(ad) - bi * scale(bd), decimals)
+}
+
+/**
+ * Convert a human-readable decimal string to atomic units (e.g. USDC → lamports).
+ * Uses BigInt — no float conversion.
+ */
+export function parseDecimalToUnits(s: string, unitDecimals: number): bigint {
+  const [int, dec] = decParts(s)
+  const factor     = 10n ** BigInt(unitDecimals)
+  if (dec === unitDecimals) return int
+  if (dec < unitDecimals)  return int * 10n ** BigInt(unitDecimals - dec)
+  // dec > unitDecimals: truncate (do not round — round-half-up can over-spend)
+  return int / 10n ** BigInt(dec - unitDecimals)
+}
+
+/**
+ * Convert atomic units back to a human-readable decimal string.
+ * Inverse of parseDecimalToUnits.
+ */
+export function formatUnitsToDecimal(units: bigint, unitDecimals: number): string {
+  return formatFixed(units, unitDecimals)
+}
+
+/**
+ * Calculate a fee amount from a notional string and a basis-points integer.
+ * 100 bps = 1%. No floating math.
+ */
+export function calculateFeeBps(notional: string, bps: number): string {
+  const [int, dec] = decParts(notional)
+  const result = int * BigInt(bps)
+  const decimals = dec + 4  // bps divisor is 10000 (4 digits)
+  return formatFixed(result, decimals)
+}
+
+/**
+ * Validate that a price string is a valid multiple of tickSize.
+ * Uses integer remainder — no floating-point tick-snap math.
+ */
+export function validateTickStr(
+  price: string,
+  tickSize: string,
+): { ok: true } | { ok: false; error: string } {
+  const [pi, pd] = decParts(price)
+  const [ti, td] = decParts(tickSize)
+  const decimals  = Math.max(pd, td)
+  const scale     = (d: number) => 10n ** BigInt(decimals - d)
+  const pScaled   = pi * scale(pd)
+  const tScaled   = ti * scale(td)
+  if (tScaled === 0n) return { ok: true }
+  const rem = ((pScaled % tScaled) + tScaled) % tScaled
+  if (rem !== 0n) return { ok: false, error: `Price must be a multiple of ${tickSize}.` }
+  return { ok: true }
+}
+
 // ── Submission validators (string → string, no number conversion) ─────────────
 
 /** Regex patterns for price and quantity strings accepted by the matching engine */
@@ -120,15 +184,10 @@ export function validatePriceStr(
 ): { ok: true; value: string } | { ok: false; error: string } {
   const trimmed = raw.trim()
   if (!DECIMAL_RE.test(trimmed)) return { ok: false, error: 'Price must be a positive decimal number.' }
-  if (parseFloat(trimmed) <= 0)  return { ok: false, error: 'Price must be greater than zero.' }
-  if (tickSize) {
-    const tick = parseFloat(tickSize)
-    if (tick > 0) {
-      const remainder = parseFloat(trimmed) % tick
-      if (remainder > 1e-9 && Math.abs(remainder - tick) > 1e-9) {
-        return { ok: false, error: `Price must be a multiple of ${tickSize}.` }
-      }
-    }
+  if (cmpDecStr(trimmed, '0') <= 0) return { ok: false, error: 'Price must be greater than zero.' }
+  if (tickSize && cmpDecStr(tickSize, '0') > 0) {
+    const tick = validateTickStr(trimmed, tickSize)
+    if (!tick.ok) return tick
   }
   return { ok: true, value: trimmed }
 }
@@ -144,9 +203,8 @@ export function validateQtyStr(
 ): { ok: true; value: string } | { ok: false; error: string } {
   const trimmed = raw.trim()
   if (!DECIMAL_RE.test(trimmed)) return { ok: false, error: 'Quantity must be a positive decimal number.' }
-  const n = parseFloat(trimmed)
-  if (n <= 0) return { ok: false, error: 'Quantity must be greater than zero.' }
-  if (minOrderSize != null && n < minOrderSize) {
+  if (cmpDecStr(trimmed, '0') <= 0) return { ok: false, error: 'Quantity must be greater than zero.' }
+  if (minOrderSize != null && cmpDecStr(trimmed, String(minOrderSize)) < 0) {
     return { ok: false, error: `Minimum order size is ${minOrderSize}.` }
   }
   return { ok: true, value: trimmed }

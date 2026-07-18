@@ -56,8 +56,8 @@ export function ChartHeader({
           <span style={{ fontSize: 14, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#fff', fontVariantNumeric: 'tabular-nums' }}>
             {ticker.lastPrice}
           </span>
-          <span style={{ fontSize: 11, fontWeight: 700, color: changeColor(ticker.change24h), fontVariantNumeric: 'tabular-nums' }}>
-            {ticker.change24h}%
+          <span style={{ fontSize: 11, fontWeight: 700, color: changeColor(ticker.change24hPct ?? ticker.change24h), fontVariantNumeric: 'tabular-nums' }}>
+            {ticker.change24hPct ?? `${ticker.change24h}%`}
           </span>
         </>
       )}

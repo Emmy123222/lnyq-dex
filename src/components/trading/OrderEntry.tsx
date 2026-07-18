@@ -13,6 +13,8 @@
 import { useState, useEffect } from 'react'
 import { useToast } from '../ui/Toast'
 import { FLAGS } from '../../config/featureFlags'
+import { ENV } from '../../config/env'
+import { authService } from '../../services/authService'
 import {
   TAKER_FEE_BPS, MAKER_FEE_BPS,
   PERP_TAKER_FEE_BPS, PERP_MAKER_FEE_BPS,
@@ -185,6 +187,8 @@ export default function OrderEntry({
   const [book,       setBook]       = useState<OrderBook | null>(null)
 
   const perpEnabled = isPerp && FLAGS.PERPS
+  const session = authService.loadSession()
+  const hasWallet = ENV.IS_LOCAL_API || !!session?.walletAddress
 
   useEffect(() => {
     if (prefillPrice !== undefined) setPrice(prefillPrice.toFixed(2))
@@ -236,8 +240,13 @@ export default function OrderEntry({
     && gtdValid
     && !loading
     && !!marketId
+    && hasWallet
 
   const submit = async () => {
+    if (!ENV.IS_LOCAL_API && !session?.walletAddress) {
+      toast('error', 'Wallet required', 'Link a Solana wallet in Settings to trade on testnet')
+      return
+    }
     if (!marketId) { toast('error', 'No market', 'No active market selected'); return }
     if (qtyNum <= 0) { toast('error', 'Quantity required', 'Enter a quantity'); return }
     if (!/^\d+$/.test(quantity)) { toast('error', 'Whole number only', 'Quantity must be a whole number'); return }
@@ -284,6 +293,13 @@ export default function OrderEntry({
 
   return (
     <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+      {/* Wallet required notice */}
+      {!hasWallet && (
+        <div style={{ padding: '9px 12px', background: 'rgba(255,70,102,0.08)', border: '1px solid rgba(255,70,102,0.3)', borderRadius: 6, fontSize: 12, color: 'var(--sell, #ff4666)', lineHeight: 1.4 }}>
+          <strong>Wallet required.</strong> Link a Solana wallet in Settings to trade on testnet.
+        </div>
+      )}
 
       {/* Perp notice when Phase 2 not yet enabled */}
       {isPerp && !perpEnabled && (
