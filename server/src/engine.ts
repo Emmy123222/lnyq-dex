@@ -153,12 +153,12 @@ async function settlePerpSide(tx: TX, {
   leverage:  number
   fee:       number
 }) {
-  const notional  = fillQty * fillPrice
-  const margin    = notional / leverage
+  const notional  = roundMoney(fillQty * fillPrice)
+  const margin    = roundMoney(notional / leverage)
   const opposite  = direction === 'long' ? 'short' : 'long'
 
   // Debit locked margin + fee from USDC
-  await debitLocked(tx, userId, 'USDC', margin + fee)
+  await debitLocked(tx, userId, 'USDC', roundMoney(margin + fee))
 
   // Check for an existing opposite-side position to net against
   const oppositePos = await (tx as any).position.findUnique({
@@ -169,15 +169,15 @@ async function settlePerpSide(tx: TX, {
 
   if (oppositePos && oppositePos.status === 'OPEN' && oppositePos.size > 0) {
     const closeQty      = Math.min(remainQty, oppositePos.size)
-    const entryN        = closeQty * Number(oppositePos.entryPrice)
-    const exitN         = closeQty * fillPrice
-    const realizedPnl   = direction === 'long'
+    const entryN        = roundMoney(closeQty * Number(oppositePos.entryPrice))
+    const exitN         = roundMoney(closeQty * fillPrice)
+    const realizedPnl   = roundMoney(direction === 'long'
       ? entryN - exitN    // closing short: entered higher, exit lower = profit if entryN > exitN
-      : exitN - entryN    // closing long:  exit higher than entry = profit
-    const releasedMargin = (entryN) / Number(oppositePos.leverage)
+      : exitN - entryN)   // closing long:  exit higher than entry = profit
+    const releasedMargin = roundMoney(entryN / Number(oppositePos.leverage))
 
     // Return margin + realized PnL
-    await creditBalance(tx, userId, 'USDC', releasedMargin + realizedPnl)
+    await creditBalance(tx, userId, 'USDC', roundMoney(releasedMargin + realizedPnl))
 
     const newSize = oppositePos.size - closeQty
     if (newSize <= 0) {
@@ -205,7 +205,7 @@ async function settlePerpSide(tx: TX, {
   if (existingPos && existingPos.status === 'OPEN' && existingPos.size > 0) {
     // Weighted-average entry price
     const totalSize  = existingPos.size + remainQty
-    const newEntry   = (existingPos.size * Number(existingPos.entryPrice) + remainQty * fillPrice) / totalSize
+    const newEntry   = roundMoney((existingPos.size * Number(existingPos.entryPrice) + remainQty * fillPrice) / totalSize)
     const newLiqPrice = calcLiquidationPrice(direction, newEntry, existingPos.leverage)
     await (tx as any).position.update({
       where: { id: existingPos.id },
@@ -213,7 +213,7 @@ async function settlePerpSide(tx: TX, {
         size:             totalSize,
         entryPrice:       newEntry,
         liquidationPrice: newLiqPrice,
-        margin:           { increment: remainQty * fillPrice / leverage },
+        margin:           { increment: roundMoney(remainQty * fillPrice / leverage) },
         markPrice:        fillPrice,
         unrealizedPnl:    0,
       },
@@ -224,14 +224,14 @@ async function settlePerpSide(tx: TX, {
       where:  { userId_marketId_side: { userId, marketId, side: direction } },
       update: {
         size: remainQty, entryPrice: fillPrice, leverage,
-        liquidationPrice: liqPrice, margin: remainQty * fillPrice / leverage,
+        liquidationPrice: liqPrice, margin: roundMoney(remainQty * fillPrice / leverage),
         markPrice: fillPrice, unrealizedPnl: 0, realizedPnl: 0,
         status: 'OPEN', closedAt: null, openedAt: new Date(),
       },
       create: {
         userId, marketId, side: direction,
         size: remainQty, entryPrice: fillPrice, leverage,
-        liquidationPrice: liqPrice, margin: remainQty * fillPrice / leverage,
+        liquidationPrice: liqPrice, margin: roundMoney(remainQty * fillPrice / leverage),
         markPrice: fillPrice, status: 'OPEN',
       },
     })
@@ -270,6 +270,7 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
       const market = await tx.market.findUnique({ where: { id: req.marketId } })
       if (!market)                    return { error: `Market ${req.marketId} not found` }
       if (market.status !== 'ACTIVE') return { error: 'Market is not active' }
+      // Phase 1: collection tokens trade in whole units only. Fractional quantities require Phase 2 schema changes.
       if (req.quantity < 1 || !Number.isInteger(req.quantity)) return { error: 'Quantity must be a positive integer' }
       if (req.type === 'limit' && (!req.price || req.price <= 0)) return { error: 'Price required for limit orders' }
 

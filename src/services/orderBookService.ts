@@ -2,8 +2,9 @@
  * orderBookService — order book snapshots and streaming.
  *
  * All modes hit a real backend. No mock data.
- * local-api: REST snapshot + WS live updates via simClient
- * devnet-api+: REST from API, poll every 3s (WS not yet wired)
+ * local-api: REST snapshot + WS live updates via simClient; seqNum gap detection with REST fallback
+ * devnet/staging/prod: REST poll every 3s; status = 'delayed' (Phase 1 decision —
+ *   no devnet WS order-book endpoint yet; honest Delayed badge shown in OrderBook toolbar)
  */
 
 import type { OrderBook, PriceLevel, PublicTrade, ServiceResult } from '../types'

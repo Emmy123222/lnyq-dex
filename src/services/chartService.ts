@@ -3,7 +3,9 @@
  *
  * All modes hit a real backend. No mock data.
  * getCandles: REST fetch from /markets/:id/candles
- * subscribe: WS via simClient (local-api) or polling (other modes)
+ * subscribe (local-api): WS push via simClient; status = 'live'
+ * subscribe (devnet/staging/prod): REST poll every 10s; status = 'delayed' (Phase 1 decision —
+ *   no devnet WS candle endpoint yet; honest Delayed badge shown in ChartHeader)
  */
 
 import type { Candle, ServiceResult } from '../types'
