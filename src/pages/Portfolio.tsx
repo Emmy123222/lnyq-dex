@@ -14,8 +14,10 @@ function fmt(n: number, dec = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: dec, maximumFractionDigits: dec })
 }
 
-const PORT_TABS = ['Positions', 'Open Orders', 'Order History'] as const
-type PortTab = typeof PORT_TABS[number]
+const PORT_TABS = FLAGS.PERPS
+  ? (['Positions', 'Open Orders', 'Order History'] as const)
+  : (['Holdings',  'Open Orders', 'Order History'] as const)
+type PortTab = (typeof PORT_TABS)[number]
 
 const PERIODS = ['7D', '30D', 'All'] as const
 
@@ -99,7 +101,7 @@ function HistoryRow({ order }: { order: Order }) {
 }
 
 export default function Portfolio() {
-  const [tab,          setTab]          = useState<PortTab>('Positions')
+  const [tab,          setTab]          = useState<PortTab>(PORT_TABS[0])
   const [period,       setPeriod]       = useState<typeof PERIODS[number]>('30D')
   const [stats,        setStats]        = useState<PortfolioStats | null>(null)
   const [balances,     setBalances]     = useState<Balance[]>([])
@@ -144,10 +146,12 @@ export default function Portfolio() {
       {/* Page heading */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 18 }}>
         <span style={{ fontSize: 24, fontWeight: 800, color: '#fff' }}>Portfolio</span>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button disabled title="Withdraw unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Withdraw</button>
-          <button disabled title="Deposit unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Deposit</button>
-        </div>
+        {FLAGS.DEPOSITS && (
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button disabled title="Withdraw unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--surface-3)', border: '1px solid var(--border)', color: 'var(--text-tertiary)', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Withdraw</button>
+            <button disabled title="Deposit unavailable — wallet integration required" style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'var(--accent)', border: 'none', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'not-allowed', opacity: 0.5 }}>Deposit</button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -192,8 +196,9 @@ export default function Portfolio() {
                   ))}
                 </div>
               </div>
-              <div style={{ flex: 1, minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Chart coming soon</span>
+              <div style={{ flex: 1, minHeight: 120, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Account value history</span>
+                <span style={{ fontSize: 11, color: 'var(--text-tertiary)', opacity: 0.6 }}>Available after Phase 1 launch</span>
               </div>
             </div>
           </div>
@@ -206,7 +211,7 @@ export default function Portfolio() {
               ))}
             </div>
 
-            {tab === 'Positions' && (
+            {(tab === 'Positions' || tab === 'Holdings') && (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1.3fr 1fr 0.8fr', padding: '9px 14px' }}>
                   {['Position', 'Size / Tokens', 'Entry', 'Mark', 'PnL (USDC)', 'Liq. Price', ''].map((h, i) => (

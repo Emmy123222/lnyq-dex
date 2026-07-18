@@ -28,22 +28,6 @@ const NAV_MORE = [
   { label: 'Settings',    path: '/settings' },
 ]
 
-function LogoMark() {
-  return (
-    <div
-      style={{
-        width: 24, height: 24, borderRadius: 5, flexShrink: 0,
-        background: 'linear-gradient(135deg, #A051FC 0%, #531C97 100%)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-        <path d="M2 11.5 L6.5 2.5 L11 11.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        <path d="M3.8 8.5 H9.2" stroke="#fff" strokeWidth="1.4" strokeLinecap="round"/>
-      </svg>
-    </div>
-  )
-}
 
 export default function Header() {
   const navigate  = useNavigate()
@@ -92,7 +76,7 @@ export default function Header() {
             onClick={() => navigate('/trade')}
             className="flex items-center gap-[10px] select-none cursor-pointer"
           >
-            <LogoMark />
+            <img src="/Lnyq.png" alt="LNYQ" style={{ height: 28, width: 28, objectFit: 'contain', flexShrink: 0 }} />
             <span style={{ fontSize: 19, fontWeight: 900, letterSpacing: '-0.02em', color: '#fff' }}>LNYQ</span>
           </button>
 

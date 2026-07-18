@@ -32,7 +32,7 @@ A non-custodial spot CLOB exchange built on Solana, in active development toward
 ### Frontend
 
 ```bash
-cp .env.example .env.local     # fill in VITE_API_URL at minimum
+cp .env.example .env.local     # fill in VITE_LNYQ_API_URL at minimum
 npm install
 npm run dev
 ```

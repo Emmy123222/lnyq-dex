@@ -67,7 +67,6 @@ export default function MobileNav() {
 
   return (
     <nav
-      className="md:hidden"
       style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 30,
         background: 'var(--bg-base)', borderTop: '1px solid var(--border-subtle)',

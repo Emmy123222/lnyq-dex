@@ -464,7 +464,7 @@ function WalletCreationStep({
       <div>
         <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Create your wallet</h1>
         <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
-          A Solana wallet ties your LNYQ identity to an address. Required for on-chain settlement in Phase 2.
+          A Solana wallet ties your LNYQ identity to an on-chain address. Required for testnet trading and order signing.
         </p>
       </div>
 
@@ -501,7 +501,7 @@ function WalletCreationStep({
         onClick={onSkip}
         style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
       >
-        Skip for now — set up wallet later in Settings
+        Skip — trading without a wallet uses local simulation only
       </button>
     </div>
   )

@@ -1,6 +1,6 @@
 # Responsive Design Audit
 
-**Date:** 2026-07-14
+**Date:** 2026-07-18
 
 ---
 
@@ -24,7 +24,7 @@
 | Tablet (640–1023px) | Sidebar collapses, top nav or hamburger |
 | Mobile (<640px) | No sidebar, bottom navigation bar, full-width content |
 
-**Current status:** AppShell uses a fixed-width sidebar approach. Mobile nav needs `position: fixed; bottom: 0` bottom bar. Sidebar should be hidden below 1024px.
+**Current status (updated 2026-07-18):** `MobileNav.tsx` is implemented — 5-tab fixed bottom bar at `position: fixed; bottom: 0`. `AppShell` renders it conditionally via `{isMobile && <MobileNav />}` (using `useIsMobile(768)` hook), so it is absent from the DOM on desktop entirely. Safe-area-inset-bottom padding applied both in MobileNav and AppShell `<main>`. P1 gap resolved.
 
 ---
 
@@ -168,14 +168,13 @@ All replaced with simpler layouts:
 
 ## Known Gaps (Backlog)
 
-| Priority | Gap | Files Affected |
-|----------|-----|----------------|
-| P1 | TradePage has no mobile tab system for Order Book / Trades / Entry | `TradePage.tsx` |
-| P1 | AppShell sidebar not hidden on mobile | `AppShell.tsx` |
-| P1 | Bottom navigation bar missing on mobile | `AppShell.tsx` |
-| P2 | Portfolio equity row doesn't stack on narrow screens | `Portfolio.tsx` |
-| P2 | Stat strips overflow horizontally on mobile | `TradePage.tsx`, `MarketDetail.tsx` |
-| P2 | Alerts side-by-side panels don't stack on mobile | `Alerts.tsx` |
-| P2 | Rewards side-by-side panels don't stack on mobile | `Rewards.tsx` |
-| P3 | Order entry should open as bottom sheet on mobile | `TradePage.tsx` |
-| P3 | Table rows should convert to cards on mobile | `Portfolio.tsx`, `TradePage.tsx` |
+| Priority | Gap | Files Affected | Status |
+|----------|-----|----------------|--------|
+| P1 | TradePage has no mobile tab system for Order Book / Trades / Entry | `TradePage.tsx` | Open |
+| ~~P1~~ | ~~Bottom navigation bar missing on mobile~~ | `AppShell.tsx`, `MobileNav.tsx` | **Done** — `useIsMobile` + conditional render |
+| P2 | Portfolio equity+chart row doesn't stack on narrow screens (`flex: '0 0 360px'`) | `Portfolio.tsx` | Open |
+| P2 | Stat strips overflow horizontally on mobile | `TradePage.tsx`, `MarketDetail.tsx` | Open |
+| P2 | Alerts side-by-side panels don't stack on mobile | `Alerts.tsx` | Open |
+| P2 | Rewards side-by-side panels don't stack on mobile | `Rewards.tsx` | Open |
+| P3 | Order entry should open as bottom sheet on mobile | `TradePage.tsx` | Open |
+| P3 | Table rows should convert to cards on mobile | `Portfolio.tsx`, `TradePage.tsx` | Open |

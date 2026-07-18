@@ -150,9 +150,10 @@ function CrossChainTab() {
   const amountNum  = parseFloat(amount) || 0
   const amountBase = String(Math.round(amountNum * 10 ** USDC_DECIMALS))
 
-  const canQuote = amountNum > 0 && !!CHAIN_ID[chain]
+  const canQuote = amountNum > 0 && !!CHAIN_ID[chain] && !!toAddress
 
   const getQuote = async () => {
+    if (!toAddress) return
     setQuoting(true); setRoute(null); setQuoteError(null)
     const res = await squidService.getRoute({
       fromChain:   CHAIN_ID[chain],
@@ -161,7 +162,7 @@ function CrossChainTab() {
       toChain:     SOLANA_CHAIN_ID,
       toToken:     SOLANA_USDC,
       fromAddress: '0x0000000000000000000000000000000000000001',
-      toAddress:   toAddress || '11111111111111111111111111111111',
+      toAddress,
     })
     if (res.ok) setRoute(res.data)
     else setQuoteError(res.error?.message ?? 'Failed to get route from Squid')
@@ -222,6 +223,13 @@ function CrossChainTab() {
       {quoteError && (
         <div style={{ padding: '10px 12px', background: 'rgba(246,70,93,0.08)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 6 }}>
           <div style={{ fontSize: 12, color: 'var(--down-400)', lineHeight: 1.5 }}>Route unavailable: {quoteError}</div>
+        </div>
+      )}
+
+      {/* Wallet guard */}
+      {!toAddress && (
+        <div style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6, fontSize: 12, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+          Connect your Solana wallet to preview a cross-chain route.
         </div>
       )}
 

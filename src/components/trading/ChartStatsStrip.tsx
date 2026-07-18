@@ -51,8 +51,8 @@ export function ChartStatsStrip({ ticker, top, quoteAsset = 'USDC' }: Props) {
     },
     {
       label: '24h Chg',
-      value: ticker ? `${ticker.change24h}%` : '—',
-      color: changeColor(ticker?.change24h ?? null),
+      value: ticker ? (ticker.change24hPct ?? `${ticker.change24h}%`) : '—',
+      color: changeColor(ticker?.change24hPct ?? ticker?.change24h ?? null),
     },
     {
       label: `Vol (${quoteAsset})`,

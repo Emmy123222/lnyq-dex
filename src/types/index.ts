@@ -57,7 +57,8 @@ export interface Market {
 export interface MarketTicker {
   marketId: string
   lastPrice: string          // fixed-point string
-  change24h: string          // e.g. "+5.21"
+  change24h: string          // absolute USDC delta e.g. "+1.23"
+  change24hPct?: string      // percentage string e.g. "+5.21%" (backend may omit on error)
   volume24h: string          // fixed-point string USDC
   high24h: string
   low24h: string
