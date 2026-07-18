@@ -296,12 +296,13 @@ describe('IOC (Immediate-Or-Cancel)', () => {
 
     await sell(3, 100)  // only 3 units available
 
-    // IOC buy for 5: should fill 3 and cancel remaining 2
+    // IOC buy for 5: fills 3, remainder cancelled (status = PARTIALLY_FILLED, remainingQty = 0)
     const r = await placeOrder({ marketId: TEST_MARKET_ID, userId: BUYER_ID, side: 'buy', type: 'limit', price: 100, quantity: 5, timeInForce: 'IOC' })
     expect('error' in r).toBe(false)
     if ('order' in r) {
       expect(r.order.filledQuantity).toBe(3)
-      expect(r.order.status).toMatch(/CANCELLED|PARTIALLY_FILLED|FILLED/)
+      expect(r.order.remainingQuantity).toBe(0)
+      expect(r.order.status).toBe('PARTIALLY_FILLED')
     }
   })
 
@@ -312,6 +313,7 @@ describe('IOC (Immediate-Or-Cancel)', () => {
     expect('error' in r).toBe(false)
     if ('order' in r) {
       expect(r.order.filledQuantity).toBe(0)
+      expect(r.order.remainingQuantity).toBe(0)
       expect(r.order.status).toBe('CANCELLED')
     }
   })
@@ -328,7 +330,11 @@ describe('FOK (Fill-Or-Kill)', () => {
 
     const r = await placeOrder({ marketId: TEST_MARKET_ID, userId: BUYER_ID, side: 'buy', type: 'limit', price: 100, quantity: 5, timeInForce: 'FOK' })
     expect('error' in r).toBe(false)
-    if ('order' in r) expect(r.order.status).toBe('FILLED')
+    if ('order' in r) {
+      expect(r.order.status).toBe('FILLED')
+      expect(r.order.filledQuantity).toBe(5)
+      expect(r.order.remainingQuantity).toBe(0)
+    }
   })
 
   it('FOK is rejected when liquidity is insufficient', async () => {
@@ -337,13 +343,10 @@ describe('FOK (Fill-Or-Kill)', () => {
 
     await sell(3, 100)  // only 3 available
 
+    // FOK pre-check returns { error } before writing any order — never creates a cancelled order
     const r = await placeOrder({ marketId: TEST_MARKET_ID, userId: BUYER_ID, side: 'buy', type: 'limit', price: 100, quantity: 5, timeInForce: 'FOK' })
-    // Either an error or an order with 0 fills and CANCELLED status
-    if ('error' in r) {
-      expect(r.error).toMatch(/FOK|insufficient/i)
-    } else {
-      expect(r.order.filledQuantity).toBe(0)
-    }
+    expect('error' in r).toBe(true)
+    if ('error' in r) expect(r.error).toMatch(/FOK/i)
   })
 })
 
@@ -374,7 +377,7 @@ describe('cancelOrder', () => {
     await setBalance(SELLER_ID, BASE, 100)
     const sellR = await sell(5, 100)
     if ('order' in sellR) {
-      const r = await cancelOrder((sellR as { order: { id: string } }).order.id, BUYER_ID)
+      const r = await cancelOrder((sellR as { order: { id: string } }).order.id, BUYER_ID) as Record<string, unknown>
       expect('error' in r).toBe(true)
     }
   })

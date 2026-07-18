@@ -41,6 +41,12 @@ function calcFee(notional: number, bps: number): number {
   return Math.round((notional * bps / BPS_DIV) * 100) / 100
 }
 
+// Rounds to 8 decimal places to eliminate IEEE-754 drift in computed amounts.
+// e.g. 74.95 * 3 = 224.85000000000002; roundMoney gives 224.85.
+function roundMoney(n: number): number {
+  return Math.round(n * 1e8) / 1e8
+}
+
 /** Estimated liquidation price for display only. */
 export function calcLiquidationPrice(side: 'long' | 'short', entry: number, leverage: number): number {
   const lev = Math.min(Math.max(1, leverage), 20)
@@ -278,11 +284,11 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
           const lockPrice = req.type === 'limit' ? price : Number(market.referencePrice) * 1.05
           const margin    = (lockPrice * req.quantity) / leverage
           const fee       = calcFee(lockPrice * req.quantity, TAKER_FEE_BPS)
-          const ok = await lockBalance(tx, req.userId, 'USDC', margin + fee)
+          const ok = await lockBalance(tx, req.userId, 'USDC', roundMoney(margin + fee))
           if (!ok) return { error: 'Insufficient USDC balance for margin' }
         } else if (req.side === 'buy') {
           const lockPrice = req.type === 'limit' ? price : Number(market.referencePrice) * 1.05
-          const lockAmt   = lockPrice * req.quantity + calcFee(lockPrice * req.quantity, TAKER_FEE_BPS)
+          const lockAmt   = roundMoney(lockPrice * req.quantity + calcFee(lockPrice * req.quantity, TAKER_FEE_BPS))
           const ok = await lockBalance(tx, req.userId, market.quoteAsset, lockAmt)
           if (!ok) return { error: `Insufficient ${market.quoteAsset} balance` }
         } else {
@@ -390,12 +396,12 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
         } else {
           // Spot settlement: transfer base asset
           if (buyerId !== MM_USER_ID) {
-            await debitLocked(tx, buyerId,  market.quoteAsset, fillPrice * fillQty + (buyIsNew ? takerFee : makerFee))
+            await debitLocked(tx, buyerId,  market.quoteAsset, roundMoney(fillPrice * fillQty + (buyIsNew ? takerFee : makerFee)))
             await creditBalance(tx, buyerId, market.baseAsset,  fillQty)
           }
           if (sellerId !== MM_USER_ID) {
             await debitLocked(tx, sellerId,  market.baseAsset,  fillQty)
-            await creditBalance(tx, sellerId, market.quoteAsset, fillPrice * fillQty - (buyIsNew ? makerFee : takerFee))
+            await creditBalance(tx, sellerId, market.quoteAsset, roundMoney(fillPrice * fillQty - (buyIsNew ? makerFee : takerFee)))
           }
         }
 
@@ -489,11 +495,11 @@ export async function placeOrder(req: PlaceOrderRequest): Promise<OrderResult | 
       } else if (req.timeInForce === 'IOC') {
         if (!isMMBot) {
           if (isPerp) {
-            const remainNotional = remainingQty * price
-            await unlockBalance(tx, req.userId, 'USDC', remainNotional / leverage + calcFee(remainNotional, TAKER_FEE_BPS))
+            const remainNotional = roundMoney(remainingQty * price)
+            await unlockBalance(tx, req.userId, 'USDC', roundMoney(remainNotional / leverage + calcFee(remainNotional, TAKER_FEE_BPS)))
           } else if (req.side === 'buy') {
-            const remainNotional = remainingQty * price
-            await unlockBalance(tx, req.userId, market.quoteAsset, remainNotional + calcFee(remainNotional, TAKER_FEE_BPS))
+            const remainNotional = roundMoney(remainingQty * price)
+            await unlockBalance(tx, req.userId, market.quoteAsset, roundMoney(remainNotional + calcFee(remainNotional, TAKER_FEE_BPS)))
           } else {
             await unlockBalance(tx, req.userId, market.baseAsset, remainingQty)
           }
