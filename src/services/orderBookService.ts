@@ -32,9 +32,10 @@ function restLevelsToBook(
 
   const bestBid = parseFloat(bidsWithTotal[0]?.price ?? '0')
   const bestAsk = parseFloat(asksWithTotal[0]?.price ?? '0')
-  const spread    = bestAsk > 0 && bestBid > 0 ? (bestAsk - bestBid).toFixed(2) : '0.00'
-  const spreadPct = bestAsk > 0 && bestBid > 0 ? ((bestAsk - bestBid) / bestBid * 100).toFixed(3) : '0.000'
-  const midpoint  = bestAsk > 0 && bestBid > 0 ? ((bestBid + bestAsk) / 2).toFixed(2) : '0.00'
+  const mid       = bestAsk > 0 && bestBid > 0 ? (bestBid + bestAsk) / 2 : 0
+  const spread    = mid > 0 ? (bestAsk - bestBid).toFixed(2) : '0.00'
+  const spreadPct = mid > 0 ? ((bestAsk - bestBid) / mid * 100).toFixed(3) : '0.000'
+  const midpoint  = mid > 0 ? mid.toFixed(2) : '0.00'
 
   return { marketId, bids: bidsWithTotal, asks: asksWithTotal, spread, spreadPct, midpoint, sequenceNumber: 1, updatedAt: new Date().toISOString() }
 }

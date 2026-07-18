@@ -1,12 +1,12 @@
 /**
- * walletService — wallet integration layer.
+ * walletService — Privy embedded-wallet utilities.
  *
- * Phase 2: uses Privy (@privy-io/react-auth) for embedded Solana wallet creation.
- * Wallet state is accessed through useWalletContext() hook (src/contexts/WalletContext.tsx).
- * This service provides utilities for non-hook contexts.
+ * Uses @privy-io/react-auth for Solana embedded wallet creation (Phase 1).
+ * Wallet state is accessed through useWalletContext() (src/contexts/WalletContext.tsx).
+ * This service provides utilities callable outside React component trees.
  *
- * Setup: set VITE_PRIVY_APP_ID in .env to enable wallet features.
- * When not set, all wallet UI shows "Wallet not configured."
+ * Setup: set VITE_PRIVY_APP_ID in .env.local to enable wallet features.
+ * When not set, all wallet UI is hidden gracefully.
  */
 
 import type { ServiceResult } from '../types'

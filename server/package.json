@@ -1,7 +1,7 @@
 {
   "name": "lnyq-api-server",
   "version": "2.0.0",
-  "description": "LNYQ DEX API server — real CLOB engine backed by PostgreSQL",
+  "description": "LNYQ DEX API server — CLOB matching engine backed by PostgreSQL (Phase 1: local simulation; real on-chain settlement requires protocol team integration)",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {

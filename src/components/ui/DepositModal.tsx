@@ -11,9 +11,31 @@
 
 import { useState } from 'react'
 import { FLAGS } from '../../config/featureFlags'
-import BridgeStatusTracker from './BridgeStatusTracker'
+import { squidService, parseSquidBridgeFees } from '../../services/squidService'
+import { authService } from '../../services/authService'
+import type { SquidRouteResponse } from '../../types'
 
 const SOURCE_CHAINS = ['Arbitrum', 'Ethereum', 'Base', 'Optimism', 'Polygon']
+
+const CHAIN_ID: Record<string, number> = {
+  Arbitrum: 42161,
+  Ethereum: 1,
+  Base:     8453,
+  Optimism: 10,
+  Polygon:  137,
+}
+
+const USDC_ON_CHAIN: Record<string, string> = {
+  Arbitrum: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
+  Ethereum: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+  Base:     '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+  Optimism: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
+  Polygon:  '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
+}
+
+const SOLANA_CHAIN_ID = 1399811149
+const SOLANA_USDC     = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+const USDC_DECIMALS   = 6
 
 interface DepositModalProps {
   onClose: () => void
@@ -100,14 +122,12 @@ function StandardTab() {
 
 // ── Cross-chain tab ───────────────────────────────────────────────────────────
 
-function CrossChainTab({ onClose }: { onClose: () => void }) {
-  const [chain,    setChain]    = useState('Arbitrum')
-  const [amount,   setAmount]   = useState('')
-  const [tracking, setTracking] = useState(false)
-
-  const amountNum = parseFloat(amount) || 0
-
-  const execute = () => setTracking(true)
+function CrossChainTab() {
+  const [chain,       setChain]      = useState('Arbitrum')
+  const [amount,      setAmount]     = useState('')
+  const [quoting,    setQuoting]    = useState(false)
+  const [route,       setRoute]      = useState<SquidRouteResponse | null>(null)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
 
   if (!FLAGS.CROSS_CHAIN) {
     return (
@@ -125,33 +145,46 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
     )
   }
 
-  if (tracking) {
-    return (
-      <BridgeStatusTracker
-        sourceChain={chain}
-        amount={amount}
-        onComplete={onClose}
-      />
-    )
+  const session    = authService.loadSession()
+  const toAddress  = session?.walletAddress ?? ''
+  const amountNum  = parseFloat(amount) || 0
+  const amountBase = String(Math.round(amountNum * 10 ** USDC_DECIMALS))
+
+  const canQuote = amountNum > 0 && !!CHAIN_ID[chain]
+
+  const getQuote = async () => {
+    setQuoting(true); setRoute(null); setQuoteError(null)
+    const res = await squidService.getRoute({
+      fromChain:   CHAIN_ID[chain],
+      fromToken:   USDC_ON_CHAIN[chain],
+      fromAmount:  amountBase,
+      toChain:     SOLANA_CHAIN_ID,
+      toToken:     SOLANA_USDC,
+      fromAddress: '0x0000000000000000000000000000000000000001',
+      toAddress:   toAddress || '11111111111111111111111111111111',
+    })
+    if (res.ok) setRoute(res.data)
+    else setQuoteError(res.error?.message ?? 'Failed to get route from Squid')
+    setQuoting(false)
   }
+
+  const bridgeFees  = route ? parseSquidBridgeFees(route.route.estimate.feeCosts) : []
+  const totalFeeUsd = bridgeFees.reduce((s, f) => s + parseFloat(f.amountUSD ?? '0'), 0)
+  const receiveMin  = route ? (parseFloat(route.route.estimate.toAmountMin) / 10 ** USDC_DECIMALS).toFixed(2) : null
+  const duration    = route ? Math.ceil(route.route.estimate.estimatedRouteDuration / 60) : null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <DropdownSelect label="Source Chain" value={chain} options={SOURCE_CHAINS} onChange={setChain} />
+      <DropdownSelect label="Source Chain" value={chain} options={SOURCE_CHAINS}
+        onChange={v => { setChain(v); setRoute(null); setQuoteError(null) }} />
 
       {/* Arrow */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: 'var(--text-tertiary)' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
           USDC via Squid
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="5" y1="12" x2="19" y2="12"/>
-            <polyline points="12 5 19 12 12 19"/>
-          </svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </div>
         <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
       </div>
@@ -163,15 +196,16 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      <AmountField value={amount} onChange={setAmount} autoFocus />
+      <AmountField value={amount} onChange={v => { setAmount(v); setRoute(null); setQuoteError(null) }} autoFocus />
 
-      {amountNum > 0 && (
+      {/* Real route estimate from Squid */}
+      {route && (
         <div style={{ padding: '10px 12px', background: 'var(--surface-2)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
-          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>Route estimate</div>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 8 }}>Route from Squid Router</div>
           {[
-            { label: 'Bridge fee',  value: 'Quoted by Squid Router' },
-            { label: 'Est. time',   value: '~2–5 min (typical)' },
-            { label: 'You receive', value: `Up to ${amountNum.toFixed(2)} USDC minus fees` },
+            { label: 'Bridge fees',   value: totalFeeUsd > 0 ? `~$${totalFeeUsd.toFixed(2)}` : 'Included' },
+            { label: 'Est. time',     value: duration != null ? `~${duration} min` : '—' },
+            { label: 'You receive ≥', value: receiveMin != null ? `${receiveMin} USDC` : '—' },
           ].map(row => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
               <span style={{ color: 'var(--text-tertiary)' }}>{row.label}</span>
@@ -179,18 +213,37 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
             </div>
           ))}
           <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            Exact fees quoted by Squid Router at execution. Requires wallet connection.
+            Quote expires. Refresh before executing. Execution requires EVM wallet signing — available in Phase 3.
           </div>
         </div>
       )}
 
+      {/* Error from Squid */}
+      {quoteError && (
+        <div style={{ padding: '10px 12px', background: 'rgba(246,70,93,0.08)', border: '1px solid rgba(246,70,93,0.3)', borderRadius: 6 }}>
+          <div style={{ fontSize: 12, color: 'var(--down-400)', lineHeight: 1.5 }}>Route unavailable: {quoteError}</div>
+        </div>
+      )}
+
+      {/* Get Quote */}
       <button
-        onClick={execute}
-        disabled={!amount || amountNum <= 0}
-        style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--accent)', color: '#fff', border: 'none', cursor: !amount || amountNum <= 0 ? 'not-allowed' : 'pointer', opacity: !amount || amountNum <= 0 ? 0.65 : 1 }}
+        onClick={getQuote}
+        disabled={!canQuote || quoting}
+        style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: route ? 'var(--surface-3)' : 'var(--accent)', color: route ? 'var(--text-secondary)' : '#fff', border: route ? '1px solid var(--border)' : 'none', cursor: !canQuote || quoting ? 'not-allowed' : 'pointer', opacity: !canQuote ? 0.65 : 1 }}
       >
-        Bridge USDC from {chain}
+        {quoting ? 'Getting quote…' : route ? 'Refresh quote' : 'Preview route'}
       </button>
+
+      {/* Execute — requires real txHash; execution gated until Phase 3 wallet signing */}
+      {route && (
+        <button
+          disabled
+          style={{ width: '100%', height: 46, borderRadius: 6, fontSize: 14, fontWeight: 900, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'not-allowed', opacity: 0.45 }}
+          title="EVM wallet signing required — available in Phase 3"
+        >
+          Execute bridge · Phase 3
+        </button>
+      )}
     </div>
   )
 }
@@ -243,7 +296,7 @@ export default function DepositModal({ onClose }: DepositModalProps) {
         <div style={{ padding: '18px 24px 24px' }}>
           {tab === 'standard'
             ? <StandardTab />
-            : <CrossChainTab onClose={onClose} />
+            : <CrossChainTab />
           }
         </div>
       </div>

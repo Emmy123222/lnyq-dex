@@ -52,11 +52,11 @@ npm run dev
 
 | Variable                  | Required | Description                              |
 |---------------------------|----------|------------------------------------------|
-| `VITE_API_URL`            | Yes      | Backend API base URL                     |
-| `VITE_WS_URL`             | Yes      | WebSocket URL for real-time data         |
-| `VITE_PRIVY_APP_ID`       | No       | Enables embedded wallet (Phase 2)        |
-| `VITE_APP_MODE`           | No       | `local-api` / `devnet-api` / `staging` / `production` |
-| `VITE_ENABLE_DEPOSITS`    | No       | Show Deposit button (Phase 2+)           |
+| `VITE_LNYQ_API_URL`       | Yes      | Backend API base URL                     |
+| `VITE_LNYQ_WS_URL`        | Yes      | WebSocket URL for real-time data         |
+| `VITE_LNYQ_ENV`           | No       | `local-api` / `devnet-api` / `staging` / `production` (default: `local-api`) |
+| `VITE_PRIVY_APP_ID`       | No       | Enables Privy embedded wallet (Phase 1)  |
+| `VITE_ENABLE_DEPOSITS`    | No       | Show Deposit button (requires wallet)    |
 | `VITE_ENABLE_CROSS_CHAIN` | No       | Enable Squid Router tab (Phase 3)        |
 | `VITE_ENABLE_PERPS`       | No       | Show Perps markets (Phase 2)             |
 | `VITE_SQUID_INTEGRATOR_ID`| No       | Required when CROSS_CHAIN=true           |

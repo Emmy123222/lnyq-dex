@@ -125,7 +125,7 @@ export default function MarketDetail() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--text-primary)' }}>About {baseAsset}</span>
               <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, color: 'var(--text-secondary)' }}>
-                {baseAsset} trades against {quoteAsset} on a central limit order book. Orders are matched on-chain and settled in {quoteAsset}.
+                {baseAsset} trades against {quoteAsset} on a central limit order book. In Phase 1, matching is handled by the local CLOB engine. Real on-chain settlement will be wired by the protocol team before mainnet.
               </p>
             </div>
             <div style={{ flex: '0 0 280px', display: 'flex', flexDirection: 'column', gap: 11, paddingLeft: 36, borderLeft: '1px solid var(--border-subtle)' }}>

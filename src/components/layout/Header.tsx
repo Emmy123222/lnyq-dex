@@ -13,18 +13,18 @@ const NAV_PRIMARY = [
   { label: 'Trade',     path: '/trade' },
   { label: 'Markets',   path: '/markets' },
   { label: 'Portfolio', path: '/portfolio' },
-  { label: 'Earn',      path: '/earn' },
-  { label: 'Vaults',    path: '/vaults' },
   { label: 'Rewards',   path: '/rewards' },
+  ...(FLAGS.EARN     ? [{ label: 'Earn',   path: '/earn'   }] : []),
+  ...(FLAGS.VAULTS   ? [{ label: 'Vaults', path: '/vaults' }] : []),
 ]
 
 const NAV_MORE = [
-  { label: 'Launchpad',   path: '/launchpad' },
-  { label: 'Stake LNYQ',  path: '/stake' },
+  ...(FLAGS.LAUNCHPAD    ? [{ label: 'Launchpad',   path: '/launchpad' }] : []),
+  ...(FLAGS.STAKE        ? [{ label: 'Stake LNYQ',  path: '/stake'     }] : []),
   { label: 'Analytics',   path: '/analytics' },
   { label: 'Alerts',      path: '/alerts' },
   { label: 'Leaderboard', path: '/leaderboard' },
-  { label: 'Funding',     path: '/funding' },
+  ...(FLAGS.FUNDING_PAGE ? [{ label: 'Funding',     path: '/funding'   }] : []),
   { label: 'Settings',    path: '/settings' },
 ]
 

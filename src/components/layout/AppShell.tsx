@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import Header from './Header'
+import MobileNav from './MobileNav'
 import TestnetBanner from '../ui/TestnetBanner'
 import { ENV } from '../../config/env'
 
@@ -12,10 +13,11 @@ export default function AppShell() {
       <TestnetBanner />
       <div style={{ paddingTop: BANNER_H }}>
         <Header />
-        <main style={{ paddingTop: 'var(--topbar-h)' }}>
+        <main style={{ paddingTop: 'var(--topbar-h)', paddingBottom: 'calc(env(safe-area-inset-bottom) + 60px)' }} className="md:pb-0">
           <Outlet />
         </main>
       </div>
+      <MobileNav />
     </div>
   )
 }
