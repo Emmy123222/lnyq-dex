@@ -14,6 +14,9 @@ import { IconArrowRight, IconCheck } from '@tabler/icons-react'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import { authService, validateAccessCodeFormat } from '../../services/authService'
+import { FLAGS } from '../../config/featureFlags'
+import { useWalletContext } from '../../contexts/WalletContext'
+import { walletService } from '../../services/walletService'
 import { ENV } from '../../config/env'
 import type { AuthStep } from '../../types'
 
@@ -32,9 +35,13 @@ function LogoMark({ size = 52 }: { size?: number }) {
 
 // ── Auth card shell ───────────────────────────────────────────────────────────
 
-type ExtendedStep = AuthStep | 'landing' | 'login-email' | 'welcome-back'
+type ExtendedStep = AuthStep | 'landing' | 'login-email' | 'welcome-back' | 'wallet-creation'
 
-const SIGNUP_STEPS: ExtendedStep[] = ['email', 'access-code', 'account-setup', 'initial-funding', 'welcome']
+const SIGNUP_STEPS: ExtendedStep[] = [
+  'email', 'access-code', 'account-setup', 'initial-funding',
+  ...(FLAGS.WALLET_ENABLED ? ['wallet-creation' as ExtendedStep] : []),
+  'welcome',
+]
 
 function AuthCard({
   children,
@@ -425,17 +432,102 @@ function InitialFundingStep({
   )
 }
 
+function WalletCreationStep({
+  sessionToken,
+  onNext,
+  onSkip,
+}: {
+  sessionToken: string
+  onNext: (walletAddress: string) => void
+  onSkip: () => void
+}) {
+  const wallet = useWalletContext()
+  const [linking, setLinking] = useState(false)
+  const [error,   setError]   = useState('')
+
+  // When Privy connects a wallet, link it to the LNYQ account automatically
+  useEffect(() => {
+    if (!wallet.connected || !wallet.address) return
+    setLinking(true)
+    setError('')
+    walletService.linkAddress(wallet.address, sessionToken)
+      .then(res => {
+        if (!res.ok) setError(res.error.message ?? 'Failed to link wallet')
+        else onNext(wallet.address!)
+      })
+      .catch(() => setError('Network error — please try again'))
+      .finally(() => setLinking(false))
+  }, [wallet.connected, wallet.address]) // eslint-disable-line
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div>
+        <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', margin: '0 0 6px' }}>Create your wallet</h1>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+          A Solana wallet ties your LNYQ identity to an address. Required for on-chain settlement in Phase 2.
+        </p>
+      </div>
+
+      {wallet.notConfigured ? (
+        <div style={{ padding: '14px 16px', background: 'rgba(240,165,0,0.08)', border: '1px solid rgba(240,165,0,0.25)', borderRadius: 8, fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          Wallet integration requires <code style={{ fontFamily: 'var(--font-mono)', color: '#F0A500' }}>VITE_PRIVY_APP_ID</code> to be configured.
+        </div>
+      ) : wallet.connected ? (
+        <div style={{ padding: '14px 16px', background: 'rgba(46,189,133,0.08)', border: '1px solid rgba(46,189,133,0.3)', borderRadius: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#2EBD85', marginBottom: 4 }}>Wallet connected</div>
+          <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: '#fff', wordBreak: 'break-all' }}>{wallet.address}</div>
+        </div>
+      ) : (
+        <Button
+          variant="primary"
+          size="lg"
+          fullWidth
+          loading={wallet.isLoading || linking}
+          onClick={() => wallet.openConnect()}
+        >
+          Create embedded wallet <IconArrowRight size={16} />
+        </Button>
+      )}
+
+      {error && (
+        <p style={{ fontSize: 12, color: 'var(--down-400)', margin: 0 }}>{error}</p>
+      )}
+
+      {linking && (
+        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', margin: 0 }}>Linking wallet to account…</p>
+      )}
+
+      <button
+        onClick={onSkip}
+        style={{ fontSize: 12, color: 'var(--text-tertiary)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}
+      >
+        Skip for now — set up wallet later in Settings
+      </button>
+    </div>
+  )
+}
+
 function WelcomeStep({
   username,
   referralCode,
   claimedAmount,
+  walletAddress,
   onDone,
 }: {
   username: string
   referralCode: string
   claimedAmount?: string
+  walletAddress?: string
   onDone: () => void
 }) {
+  const rows = [
+    { label: 'Balance',       value: claimedAmount ? `${parseFloat(claimedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : '1,000.00 USDC', mono: true },
+    { label: 'Username',      value: username },
+    { label: 'Referral Code', value: referralCode, mono: true },
+    { label: 'Network',       value: ENV.CHAIN },
+    ...(walletAddress ? [{ label: 'Wallet', value: `${walletAddress.slice(0, 6)}…${walletAddress.slice(-4)}`, mono: true }] : []),
+    { label: 'Status',        value: 'Verified', green: true },
+  ]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 24, textAlign: 'center' }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(46,189,133,0.14)', border: '1px solid #2EBD85', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -446,13 +538,7 @@ function WelcomeStep({
         <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Your testnet account is ready. Start trading.</div>
       </div>
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {[
-          { label: 'Balance',       value: claimedAmount ? `${parseFloat(claimedAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC` : '1,000.00 USDC', mono: true },
-          { label: 'Username',      value: username },
-          { label: 'Referral Code', value: referralCode, mono: true },
-          { label: 'Network',       value: ENV.CHAIN },
-          { label: 'Status',        value: 'Verified', green: true },
-        ].map(r => (
+        {rows.map(r => (
           <div key={r.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)', borderRadius: 8 }}>
             <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>{r.label}</span>
             <span style={{ fontSize: 13, fontWeight: 700, fontFamily: (r as any).mono ? 'var(--font-mono)' : undefined, color: (r as any).green ? 'var(--up-500)' : '#fff', fontVariantNumeric: 'tabular-nums' }}>
@@ -477,6 +563,7 @@ export default function AuthFlow() {
   const [referralCode,     setReferralCode]   = useState('')
   const [sessionToken,     setSessionToken]   = useState('')
   const [claimedAmount,    setClaimedAmount]  = useState<string | undefined>()
+  const [walletAddress,    setWalletAddress]  = useState<string | undefined>()
 
   // If already logged in, skip auth entirely
   useEffect(() => {
@@ -488,6 +575,7 @@ export default function AuthFlow() {
 
   const saveAndRedirect = (data: {
     userId: string; email: string; username: string; referralCode: string; sessionToken: string
+    walletAddress?: string
   }) => {
     authService.saveSession({
       userId:          data.userId,
@@ -496,6 +584,7 @@ export default function AuthFlow() {
       referralCode:    data.referralCode,
       sessionToken:    data.sessionToken,
       isAuthenticated: true,
+      walletAddress:   data.walletAddress,
     })
   }
 
@@ -566,7 +655,24 @@ export default function AuthFlow() {
         return (
           <InitialFundingStep
             sessionToken={sessionToken}
-            onNext={(_, amount) => { setClaimedAmount(amount); setStep('welcome') }}
+            onNext={(_, amount) => {
+              setClaimedAmount(amount)
+              setStep(FLAGS.WALLET_ENABLED ? 'wallet-creation' : 'welcome')
+            }}
+          />
+        )
+
+      case 'wallet-creation':
+        return (
+          <WalletCreationStep
+            sessionToken={sessionToken}
+            onNext={addr => {
+              setWalletAddress(addr)
+              const session = authService.loadSession()
+              if (session) authService.saveSession({ ...session, walletAddress: addr })
+              setStep('welcome')
+            }}
+            onSkip={() => setStep('welcome')}
           />
         )
 
@@ -576,6 +682,7 @@ export default function AuthFlow() {
             username={username}
             referralCode={referralCode}
             claimedAmount={claimedAmount}
+            walletAddress={walletAddress}
             onDone={() => navigate('/trade', { replace: true })}
           />
         )

@@ -38,12 +38,16 @@ export const ENV = {
   SQUID_ENABLE_SOLANA_BTC:  getBool('VITE_SQUID_ENABLE_SOLANA_BTC',   false),
   SQUID_ENABLE_HOOKS:       getBool('VITE_SQUID_ENABLE_HOOKS',         false),
 
+  // Wallet
+  PRIVY_APP_ID: get('VITE_PRIVY_APP_ID', ''),
+
   // Product feature flags
   ENABLE_SPOT:        getBool('VITE_ENABLE_SPOT',        true),
   ENABLE_PERPS:       getBool('VITE_ENABLE_PERPS',       false),
   ENABLE_CROSS_CHAIN: getBool('VITE_ENABLE_CROSS_CHAIN', false),
   ENABLE_PRESALE:     getBool('VITE_ENABLE_PRESALE',     false),
   ENABLE_ADMIN:       getBool('VITE_ENABLE_ADMIN',        false),
+  ENABLE_DEPOSITS:    getBool('VITE_ENABLE_DEPOSITS',    false),
 
   // Mode helpers
   IS_LOCAL_API:  rawMode === 'local-api',

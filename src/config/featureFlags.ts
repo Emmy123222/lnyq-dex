@@ -31,6 +31,12 @@ export const FLAGS = {
   LEVERAGE_CONTROLS:  ENV.ENABLE_PERPS,
   PERP_POSITIONS:     ENV.ENABLE_PERPS,
 
+  // ── Phase 2 wallet ────────────────────────────────────────────────────────
+  /** True when VITE_PRIVY_APP_ID is configured — enables wallet UI */
+  WALLET_ENABLED:     !!ENV.PRIVY_APP_ID,
+  /** True when on-chain deposits are wired (VITE_ENABLE_DEPOSITS=true) */
+  DEPOSITS:           ENV.ENABLE_DEPOSITS,
+
   // ── Phase 3 (gated) ───────────────────────────────────────────────────────
   CROSS_CHAIN:        ENV.ENABLE_CROSS_CHAIN,
   PRESALE:            ENV.ENABLE_PRESALE,

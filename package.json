@@ -13,6 +13,7 @@
     "test": "tsc -b --noEmit && node scripts/check-no-mock-data.mjs"
   },
   "dependencies": {
+    "@privy-io/react-auth": "^3.35.1",
     "@tabler/icons-react": "^2.47.0",
     "lightweight-charts": "^5.2.0",
     "react": "^19.2.7",

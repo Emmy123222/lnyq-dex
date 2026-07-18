@@ -311,6 +311,7 @@ export interface AuthSession {
   referralCode: string
   sessionToken: string
   isAuthenticated: boolean
+  walletAddress?: string   // Solana public key — set after Privy wallet creation
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

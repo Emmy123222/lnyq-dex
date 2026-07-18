@@ -5,6 +5,9 @@ import NetworkStatus from '../ui/NetworkStatus'
 import EnvBadge from '../ui/EnvBadge'
 import { authService } from '../../services/authService'
 import { portfolioService } from '../../services/portfolioService'
+import { walletService } from '../../services/walletService'
+import { useWalletContext } from '../../contexts/WalletContext'
+import { FLAGS } from '../../config/featureFlags'
 
 const NAV_PRIMARY = [
   { label: 'Trade',     path: '/trade' },
@@ -45,6 +48,7 @@ function LogoMark() {
 export default function Header() {
   const navigate  = useNavigate()
   const location  = useLocation()
+  const wallet    = useWalletContext()
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [moreOpen,    setMoreOpen]    = useState(false)
   const [depositOpen, setDepositOpen] = useState(false)
@@ -53,6 +57,9 @@ export default function Header() {
   const session  = authService.loadSession()
   const username = session?.username ?? ''
   const initials = username ? username.slice(0, 2).toUpperCase() : '??'
+
+  // Resolve wallet address: prefer live Privy state, fall back to persisted session value
+  const walletAddr = wallet.address ?? session?.walletAddress ?? null
 
   useEffect(() => {
     if (!session?.userId) return
@@ -167,19 +174,45 @@ export default function Header() {
             </div>
           )}
 
-          {/* Deposit — opens modal */}
-          <button
-            onClick={() => setDepositOpen(true)}
-            style={{
-              height: 30, padding: '0 12px', borderRadius: 6,
-              background: 'var(--accent)', color: '#fff',
-              fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              border: 'none', cursor: 'pointer',
-            }}
-            className="transition-opacity hover:opacity-90"
-          >
-            Deposit
-          </button>
+          {/* Wallet pill — connect or show address */}
+          {FLAGS.WALLET_ENABLED && (
+            walletAddr ? (
+              <div
+                title={walletAddr}
+                style={{ height: 30, padding: '0 10px', borderRadius: 6, background: 'var(--surface-3)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6, cursor: 'default' }}
+                className="hidden md:flex"
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--up-500)', flexShrink: 0 }} />
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
+                  {walletService.truncateAddress(walletAddr)}
+                </span>
+              </div>
+            ) : (
+              <button
+                onClick={() => wallet.openConnect()}
+                style={{ height: 30, padding: '0 12px', borderRadius: 6, background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-secondary)', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                className="hidden md:flex items-center transition-colors hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                Connect wallet
+              </button>
+            )
+          )}
+
+          {/* Deposit — only shown when funding is enabled */}
+          {(FLAGS.DEPOSITS || FLAGS.CROSS_CHAIN) && (
+            <button
+              onClick={() => setDepositOpen(true)}
+              style={{
+                height: 30, padding: '0 12px', borderRadius: 6,
+                background: 'var(--accent)', color: '#fff',
+                fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+                border: 'none', cursor: 'pointer',
+              }}
+              className="transition-opacity hover:opacity-90"
+            >
+              Deposit
+            </button>
+          )}
 
           {/* Notification bell */}
           <button

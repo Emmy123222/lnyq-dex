@@ -148,6 +148,35 @@ export function buildRouter(): Router {
     res.json({ ok: true, userId: user.id, username: user.username, referralCode: user.referralCode, sessionToken })
   })
 
+  // Link a Privy wallet address to the current session user
+  r.patch('/auth/wallet', async (req, res) => {
+    const ctx = await requireSession(req.headers.authorization)
+    if (!ctx) return res.status(401).json({ error: 'Unauthorized' })
+
+    const { walletAddress } = req.body as { walletAddress?: string }
+    if (!walletAddress || typeof walletAddress !== 'string') {
+      return res.status(400).json({ error: 'walletAddress is required' })
+    }
+    const trimmed = walletAddress.trim()
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) {
+      return res.status(400).json({ error: 'INVALID_ADDRESS', message: 'walletAddress must be a valid Solana public key.' })
+    }
+
+    try {
+      await prisma.user.update({
+        where: { id: ctx.userId },
+        data:  { walletAddress: trimmed },
+      })
+      res.json({ ok: true, walletAddress: trimmed })
+    } catch (err: unknown) {
+      const isUnique = (err as { code?: string }).code === 'P2002'
+      if (isUnique) {
+        return res.status(409).json({ error: 'ADDRESS_TAKEN', message: 'This wallet address is already linked to another account.' })
+      }
+      throw err
+    }
+  })
+
   // ── Markets ─────────────────────────────────────────────────────────────────
 
   r.get('/markets', async (_req, res) => {

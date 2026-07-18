@@ -130,7 +130,7 @@ function CrossChainTab({ onClose }: { onClose: () => void }) {
       <BridgeStatusTracker
         sourceChain={chain}
         amount={amount}
-        onComplete={() => setTimeout(onClose, 1500)}
+        onComplete={onClose}
       />
     )
   }
